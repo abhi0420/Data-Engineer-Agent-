@@ -12,6 +12,18 @@ class GCPSource:
         self.client = storage.Client(credentials=self.creds, project=self.project_id)
         self.bucket = self.client.bucket(self.bucket_name)
 
+    @classmethod
+    def create_bucket(cls, project_id: str, bucket_name: str, location: str = "US", storage_class="STANDARD") -> str:
+        creds = service_account.Credentials.from_service_account_file(path_to_gcs_service_account)
+        client = storage.Client(credentials=creds, project=project_id)
+        bucket = storage.Bucket(client, name=bucket_name)
+        if bucket.exists():
+            return f"Bucket {bucket_name} already exists in project {project_id}."
+        bucket.location = location
+        bucket.storage_class = storage_class
+        new_bucket = client.create_bucket(bucket)
+        return cls(project_id, new_bucket.name)
+
     def list_blobs(self, prefix: str = "") -> list[str]:
         blobs = self.bucket.list_blobs(prefix=prefix)
         return [blob.name for blob in blobs]
@@ -42,4 +54,6 @@ class GCPSource:
     
     def bucket_exists(self) -> bool:
         return self.bucket.exists()
+    
+
 
