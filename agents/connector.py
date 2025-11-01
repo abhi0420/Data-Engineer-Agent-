@@ -27,7 +27,7 @@ def extract_data_from_gcp(project_id : str, bucket_name : str, filename : str) -
 
 
 @tool
-def load_data_to_gcp(project_id: str, bucket_name: str,  source_file_path: str,              dest_blob_name: str, create_new_bucket: bool = False) -> str:
+def load_data_to_gcp(project_id: str, bucket_name: str,  source_file_path: str, dest_blob_name: str, create_new_bucket: bool = False) -> str:
     """Uploads data to the given GCP bucket from a local file."""
     
     # First, try to connect to existing bucket
@@ -63,7 +63,7 @@ if __name__ == "__main__":
     result = connector_agent.invoke(
     {"messages":
     [{"role": "user", 
-    "content": "Extract the file submissions.csv from the GCP bucket data_storage_1146 in the project data-engineering-476308 and save it locally. Next upload the same file to the bucket test_storage_4678783893 in the project data-engineering-476308. If the bucket does not exist, create it. "}]}
+    "content": "Extract the file submissions.csv from the GCP bucket data_storage_1146 in the project data-engineering-476308 and save it locally.  "}]}
 )
     
     ai_response = result['messages'][-1].content
