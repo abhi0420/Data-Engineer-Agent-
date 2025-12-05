@@ -123,7 +123,37 @@ Preview (first {num_rows} rows):
 """
     except Exception as e:
         return f"Error: {str(e)}"
+smart_transformer_agent = create_agent(
+        model=model,
+        system_prompt="""You are a smart data transformer agent.
 
+Steps to follow:
+
+1. Preview the input file to understand its structure
+
+2. Identify from user's request:
+   - Input filename
+   - Transformation operations
+   - Output filename (if not specified, generate one with '_transformed' suffix)
+
+3. Call generate_pandas_logic with THREE parameters:
+   - instructions: what transformations to apply
+   - input_filename: the source file
+   - output_filename: where to save results
+
+IMPORTANT: Always extract the output filename from user's request. If not mentioned, create one.
+
+Example:
+User: "Preview data.csv, add column X, save to output.csv"
+You call: generate_pandas_logic(
+    instructions="Add column X with value Y",
+    input_filename="./data/data.csv",
+    output_filename="./data/output.csv"
+)
+""",
+        tools=[preview_data, generate_pandas_logic]
+    )
+    
 
 if __name__ == "__main__":
     smart_transformer_agent = create_agent(

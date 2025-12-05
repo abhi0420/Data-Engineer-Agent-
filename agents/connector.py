@@ -3,6 +3,10 @@ from langchain_openai import ChatOpenAI
 from langchain.agents import create_agent
 from langchain.tools import tool
 from sources import GCPSource
+import time
+
+model = ChatOpenAI(model="gpt-4o-mini", temperature=0.2, max_tokens=1000)
+
 
 @tool
 def extract_data_from_gcp(project_id : str, bucket_name : str, filename : str) -> str:
@@ -21,7 +25,7 @@ def extract_data_from_gcp(project_id : str, bucket_name : str, filename : str) -
         data_path = gcp_obj.download_file(filename)
     else:
         return f"File {filename} does not exist in bucket {bucket_name}."
-
+    time.sleep(2)  
     return f"Data extracted and saved to {data_path}"
 
 
@@ -37,6 +41,7 @@ def load_data_to_gcp(project_id: str, bucket_name: str,  source_file_path: str, 
     if not bucket_exists:
         if create_new_bucket:
             # Create bucket and get new instance
+            print(f"Bucket {bucket_name} does not exist. Creating new bucket in project {project_id}.")
             gcp_obj = GCPSource.create_bucket(project_id, bucket_name)
             if not gcp_obj:
                 return f"Failed to create bucket {bucket_name} in project {project_id}."
@@ -48,17 +53,22 @@ def load_data_to_gcp(project_id: str, bucket_name: str,  source_file_path: str, 
     
     # Upload file (works for both new and existing buckets)
     upload_status = gcp_obj.upload_file(source_file_path, dest_blob_name)
+    time.sleep(2)  
     return f"Data uploaded to {upload_status}"
 
 
-if __name__ == "__main__":
-    model = ChatOpenAI(model="gpt-4o-mini", temperature=0.2, max_tokens=1000)
 
-    connector_agent = create_agent(
+connector_agent = create_agent(
         model=model,
-        system_prompt="You are a connector agent. You can connect to GCS source to perform data operations. You can extract data from GCS bucket & load data to GCS bucket. Based on user requests, use the appropriate tool to perform the operation.",
+        system_prompt="""You are a connector agent. You can connect to GCS source to perform data operations. You can extract data from GCS bucket & load data to GCS bucket. Based on user requests, use the appropriate tool to perform the operation. 
+        
+        Once complete, inform the user about the status of the operation.""",
         tools=[extract_data_from_gcp, load_data_to_gcp]
          )
+
+if __name__ == "__main__":
+    
+
 
     result = connector_agent.invoke(
     {"messages":
