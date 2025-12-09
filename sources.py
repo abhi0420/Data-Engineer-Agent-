@@ -31,7 +31,7 @@ class GCPSource:
     def download_file(self, filename: str, dest_path: str = None) -> str:
         blob = self.bucket.blob(filename)
         if not blob.exists():
-            return f"File '{filename}' not found in bucket"
+            return f"ERROR : File '{filename}' not found in bucket"
 
         if dest_path is None:
             dest_path = f"./data/{filename}"
@@ -42,7 +42,7 @@ class GCPSource:
 
     def upload_file(self, source_file_path: str, dest_blob_name: str) -> str:
         if not os.path.exists(source_file_path):
-            return f"Source file '{source_file_path}' not found"
+            return f"ERROR : Source file '{source_file_path}' not found"
 
         blob = self.bucket.blob(dest_blob_name)
         blob.upload_from_filename(source_file_path)

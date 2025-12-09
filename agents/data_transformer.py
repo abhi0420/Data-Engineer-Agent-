@@ -143,6 +143,7 @@ Steps to follow:
 
 IMPORTANT: Always extract the output filename from user's request. If not mentioned, create one.
 
+NOTE : In case you don't find the file, check in Data folder.
 Example:
 User: "Preview data.csv, add column X, save to output.csv"
 You call: generate_pandas_logic(

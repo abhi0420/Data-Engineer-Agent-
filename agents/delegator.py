@@ -56,7 +56,7 @@ Example task : "Read the file data.csv and add a new column 'Date' with today's 
 
 IMPORTANT: Always run a single tool at a time & wait for its completion before calling another tool.
 
-NOTE : Each tool can be called multiple times if needed based on the user request.
+
 """,
 tools=[call_connector_agent, call_smart_transformer_agent]
 )
