@@ -67,8 +67,8 @@ def load_data_to_gcp(project_id: str, bucket_name: str,  source_file_path: str, 
 connector_agent = create_agent(
         model=model,
         system_prompt="""You are a connector agent. You can connect to GCS source to perform data operations. You can extract data from GCS bucket & load data to GCS bucket. Based on user requests, use the appropriate tool to perform the operation. 
-        
-        Once complete, inform the user about the status of the operation. In case of any issues or ERRORS (like missing bucket/file), clearly mention the conflict in your response.""",
+        In case any tool returns an error or if there are any missing/incorrect details provided, report it back as an ERROR.  
+        Once complete, inform the user about the status of the operation. """,
         tools=[extract_data_from_gcp, load_data_to_gcp]
          )
 

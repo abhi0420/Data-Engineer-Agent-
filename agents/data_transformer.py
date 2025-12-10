@@ -21,7 +21,7 @@ def generate_pandas_logic(instructions: str, input_filename: str, output_filenam
     
     try:
         if not os.path.exists(input_filename):
-            return f"File {input_filename} does not exist."
+            return f"ERROR : File {input_filename} does not exist."
         
         print(f"Input: {input_filename}")
         print(f"Output: {output_filename}")
@@ -90,7 +90,7 @@ Generate the code:
         return f"Success! Transformed data saved to: {output_filename}\nOriginal backed up to: {backup_path}"
     
     except Exception as e:
-        return f"Error: {str(e)}"
+        return f"ERROR: {str(e)}"
 
 
 @tool
@@ -98,7 +98,7 @@ def preview_data(filename: str, num_rows: int = 5) -> str:
     """Preview the first few rows of a data file."""
     try:
         if not os.path.exists(filename):
-            return f"File {filename} does not exist."
+            return f"ERROR : File {filename} does not exist."
         
         file_ext = os.path.splitext(filename)[1].lower()
 
@@ -109,7 +109,7 @@ def preview_data(filename: str, num_rows: int = 5) -> str:
         elif file_ext == ".json":
             df = pd.read_json(filename)
         else:
-            return f"Unsupported file format: {file_ext}"
+            return f"ERROR : Unsupported file format: {file_ext}"
 
         preview = df.head(num_rows).to_string()
 
@@ -122,7 +122,7 @@ Preview (first {num_rows} rows):
 {preview}
 """
     except Exception as e:
-        return f"Error: {str(e)}"
+        return f"ERROR: {str(e)}"
 smart_transformer_agent = create_agent(
         model=model,
         system_prompt="""You are a smart data transformer agent.
@@ -141,6 +141,7 @@ Steps to follow:
    - input_filename: the source file
    - output_filename: where to save results
 
+   In case you encounter any errors during code execution, inform about the error message.
 IMPORTANT: Always extract the output filename from user's request. If not mentioned, create one.
 
 NOTE : In case you don't find the file, check in Data folder.

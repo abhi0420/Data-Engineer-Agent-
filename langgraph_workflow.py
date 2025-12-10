@@ -18,16 +18,12 @@ class State(TypedDict):
     model_responses : List[str]
     next_agent : str
     next_task : str
+    has_error : bool
 
-
-def semantic_search(query: str, model_responses: List[dict], top_k: int = 4) -> List[dict]:
-    """Retrieve most relevant tasks without full RAG infrastructure."""
-    # Convert tasks to text
+def semantic_search(query: str, model_responses: List[dict], top_k: int = 4):
     task_texts = [json.dumps(task) for task in model_responses]
-    
-    # TF-IDF vectorization (fast, no embeddings API needed)
     vectorizer = TfidfVectorizer()
-    task_vectors = vectorizer.fit_transform(task_texts)
+    task_vectors = vectorizer.fit_transform(task_texts)  # ❌ Fails if empty
     query_vector = vectorizer.transform([query])
     
     # Find most similar
@@ -44,7 +40,7 @@ def conflict_resolver(state: State) -> State:
     if latest_model_response:
         print("Resolving conflict : {}".format(latest_model_response))
         relevant_tasks = semantic_search(latest_model_response, state['model_responses'])
-
+        print("Relevant tasks for conflict resolution : ", relevant_tasks)
         prompt = f"""
         In a Data Engineering team, you are the Conflict Resolver. Your teammates are :
 
@@ -62,19 +58,31 @@ def conflict_resolver(state: State) -> State:
         Your response needs to be a dictionary only in the following format:
 
         {{"Agent_Name" : "task"}}
-
+        
         NOTE : Do not provide any explanations or additional text.
         """
         # Implement conflict resolution based on relevant tasks
         # For now, just log the relevant tasks
         response = model.invoke(prompt)
         print("Conflict Resolver Response : ", response.content)
+        response_content = response.content
+        if isinstance(response_content, str):
+            response_content = ast.literal_eval(response_content)
+        next_agent = list(response_content.keys())[0]
+        next_task = response_content[next_agent]
+        state['next_task'] = next_task
+        state['next_agent'] = next_agent
+        state['has_error'] = False  # Reset error flag after resolution
     return state
 
 def delegator_logic(state: State) -> State:
     user_request = state['user_request']
     tasks_done = state.get('tasks_done', [])
-
+    if state.get('has_error', False):
+        state['next_agent'] = 'conflict_resolver'
+        state['next_task'] = 'Resolve the error from previous task'
+        state['has_error'] = False  # Reset flag
+        return state
     # Taking only top 5 requests and responses to avoid overload
 
     prompt = f"""
@@ -99,10 +107,19 @@ def delegator_logic(state: State) -> State:
         - Saving the transformed data to specified file formats (CSV, Excel, JSON, Parquet)
         - Executing data transformations (e.g., filtering, aggregating, joining)
 
+        3. conflict_resolver Tool : This tool helps resolve any conflicts that arise during the execution of tasks by other agents. Call this tool when you identify conflicting instructions or errors in task execution. 
+
+
         This is the user's request: {user_request}
 
         For this request, the progress so far has been:
-        Tasks Completed : {json.dumps(tasks_done, indent=2)}
+        Recent Tasks Completed: {json.dumps(tasks_done[-5:], indent=2)}
+
+        Most Recent Agent Responses (showing what actually happened):
+        {json.dumps(state.get('model_responses', [])[-2:], indent=2)}
+
+        CRITICAL: Read the agent responses. If a step is already done successfully, DO NOT assign it again.
+        If all parts of the user request are complete, respond with END.
 
         
         Based on the user request, decide which agent to call next.
@@ -137,7 +154,6 @@ def delegator_logic(state: State) -> State:
     next_task = response_content[next_agent]
     state['next_task'] = next_task
     state['next_agent'] = next_agent
-    state['tasks_done'].append({next_agent: next_task})
     print("Updated State : ", state)
     return state
 
@@ -151,6 +167,8 @@ def call_smart_transformer_agent(state : State) -> State:
     )
 
     print("Smart Transformer Agent Response : ", response['messages'][-1].content)
+    if "ERROR" in response['messages'][-1].content.upper():
+        state['has_error'] = True
     state["tasks_done"].append({"call_smart_transformer_agent": state['next_task']})
     state['model_responses'].append("smart_transformer_agent" + response['messages'][-1].content)
     return state
@@ -162,6 +180,8 @@ def call_connector_agent(state : State) -> State:
     response = connector_agent.invoke(
         {"messages": [{"role": "user", "content": task}]}
     )
+    if "ERROR" in response['messages'][-1].content.upper():
+        state['has_error'] = True
     state["tasks_done"].append({"call_connector_agent": state['next_task']})
     state['model_responses'].append("connector_agent:" + response['messages'][-1].content)
     return state
@@ -173,22 +193,24 @@ def execute_workflow():
 
     workflow.add_node("delegator_logic", delegator_logic)
     workflow.add_node("call_connector_agent", call_connector_agent)
-    workflow.add_node("call_smart_transformer_agent", call_smart_transformer_agent) 
+    workflow.add_node("call_smart_transformer_agent", call_smart_transformer_agent)
+    workflow.add_node("conflict_resolver", conflict_resolver) 
     workflow.add_edge(START, "delegator_logic")
 
     workflow.add_conditional_edges("delegator_logic", lambda state: state['next_agent'], {
         "call_connector_agent": "call_connector_agent",
         "call_smart_transformer_agent": "call_smart_transformer_agent",
+        "conflict_resolver": "conflict_resolver",
         "END": END
     })
     workflow.add_edge("call_connector_agent", "delegator_logic")
     workflow.add_edge("call_smart_transformer_agent", "delegator_logic")
-
+    workflow.add_edge("conflict_resolver", "delegator_logic")
     workflow.add_edge("delegator_logic", END)
 
     chain = workflow.compile()
 
-    state = chain.invoke({"user_request" : "Extract the file submissions.csv from the GCP bucket data_storage_1146 in the project data-engineering-476308 and save it locally in data folder. Then read the file and add a new column 'Status' with values 'Success' when Target is 1 & 'Failure' when Target is 0, then save the result to updated_submissions.csv. Finally, upload the updated_submissions.csv file to the same bucket in the same project.", "tasks_done": [{}], "next_agent": "", "next_task": ""})
+    state = chain.invoke({"user_request" : "Extract the file submissions.csv from the GCP bucket data_storage_1146 in the project data-engineering-476308 and save it locally in data folder. Then read the file and add a new column 'Status' with values 'Success' when Target is 1 & 'Failure' when Target is 0, then save the result to updated_submissions.csv. Finally, upload the updated_submissions.csv file to the same bucket in the same project.", "tasks_done": [{}], "next_agent": "", "next_task": "", "model_responses": [], "has_error": False})
 
     print(state)
 
