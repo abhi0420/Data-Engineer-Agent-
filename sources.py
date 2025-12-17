@@ -18,10 +18,13 @@ class GCPSource:
         client = storage.Client(credentials=creds, project=project_id)
         bucket = storage.Bucket(client, name=bucket_name)
         if bucket.exists():
-            return f"Bucket {bucket_name} already exists in project {project_id}."
+            return cls(None, None)
         bucket.location = location
         bucket.storage_class = storage_class
-        new_bucket = client.create_bucket(bucket)
+        try:
+            new_bucket = client.create_bucket(bucket)
+        except Exception as e:
+            return f"ERROR : Failed to create bucket {bucket_name} . Exception: {str(e)}"
         return cls(project_id, new_bucket.name)
 
     def list_blobs(self, prefix: str = "") -> list[str]:

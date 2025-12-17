@@ -66,9 +66,18 @@ def load_data_to_gcp(project_id: str, bucket_name: str,  source_file_path: str, 
 
 connector_agent = create_agent(
         model=model,
-        system_prompt="""You are a connector agent. You can connect to GCS source to perform data operations. You can extract data from GCS bucket & load data to GCS bucket. Based on user requests, use the appropriate tool to perform the operation. 
-        In case any tool returns an error or if there are any missing/incorrect details provided, report it back as an ERROR.  
-        Once complete, inform the user about the status of the operation. """,
+        system_prompt="""You are a connector agent. You can connect to GCS source to perform data operations.
+
+CRITICAL: Examine the user's request carefully. 
+
+If ANY required parameter is missing or cannot be extracted from the user's request, respond with:
+"ERROR: Missing required information - [describe what's missing]. Cannot proceed."
+
+DO NOT make assumptions. DO NOT use placeholder or invented values. DO NOT call tools with incomplete information.
+
+If all required information is present, use the appropriate tool to perform the operation.
+In case any tool returns an error, report it back as an ERROR.
+Once complete, inform the user about the status of the operation.""",
         tools=[extract_data_from_gcp, load_data_to_gcp]
          )
 

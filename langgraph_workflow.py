@@ -20,7 +20,8 @@ class State(TypedDict):
     next_task : str
     has_error : bool
 
-def semantic_search(query: str, model_responses: List[dict], top_k: int = 4):
+def semantic_search(query: str, model_responses: List[dict], top_k: int = 2):
+    print("Performing semantic search for resolving conflict : ", query)
     task_texts = [json.dumps(task) for task in model_responses]
     vectorizer = TfidfVectorizer()
     task_vectors = vectorizer.fit_transform(task_texts)  # ❌ Fails if empty
@@ -32,6 +33,16 @@ def semantic_search(query: str, model_responses: List[dict], top_k: int = 4):
     
     return [model_responses[i] for i in top_indices]
 
+def resolution_flow(state: State) -> str:
+    "checks if workflow should end"
+    if state['next_agent'] == 'END':
+        return "END"
+    elif "connector" in state['next_agent'].lower():
+        return "call_connector_agent"
+    elif "transformer" in state['next_agent'].lower():
+        return "call_smart_transformer_agent"
+    else:
+        return "delegator_logic"
 
 def conflict_resolver(state: State) -> State:
     """Resolves conflicts in the state if any."""
@@ -47,32 +58,45 @@ def conflict_resolver(state: State) -> State:
         1. Connector Agent : This agent can connect to GCS source & perform data operations 
         2. Smart Transformer Agent :  This agent can perform data transformations using pandas based on user instructions.
 
-        You will be called when either of these agents encounter conflicts in their operations. You will be given the relevant previous responses from these agents. Your task is to analyze these responses, identify the conflicts, and provide a resolution for the issue. 
+        You will be called when either of these agents encounter conflicts in their operations. You will be given the relevant previous responses from these agents.
 
-        Given the user task that caused the conflict, you will use the analyzed information to rewrite the task in a way that helps the agents avoid the conflict and successfully complete the task.
+        Given the Main task, sub task that caused the conflict & the conflict, you will use the analyzed information to rewrite the Sub task where the conflict arose in a way that helps the agents avoid the conflict and successfully complete the task. In case the provided info is insufficient to resolve conflict, you will end the workflow.
 
-        User request that caused the conflict: {state['user_request']}
-        Relevant responses from agents to help you resolve the conflict: {json.dumps(relevant_tasks, indent=2)}
+        Main task: {state['user_request']}
+        Sub Task where conflict arose: {state['next_task']}
+        Conflict : {latest_model_response}
+
+        Relevant responses from agents to help you: {json.dumps(relevant_tasks, indent=2)}
 
 
         Your response needs to be a dictionary only in the following format:
 
         {{"Agent_Name" : "task"}}
-        
+
+        IMPORTANT : In case you find the user provided info is actually incorrect or insufficient to resolve the conflict, respond with :
+
+        {{"END" : "End the workflow as the conflict could not be resolved"}}
+
         NOTE : Do not provide any explanations or additional text.
         """
         # Implement conflict resolution based on relevant tasks
         # For now, just log the relevant tasks
-        response = model.invoke(prompt)
-        print("Conflict Resolver Response : ", response.content)
-        response_content = response.content
-        if isinstance(response_content, str):
-            response_content = ast.literal_eval(response_content)
-        next_agent = list(response_content.keys())[0]
-        next_task = response_content[next_agent]
-        state['next_task'] = next_task
-        state['next_agent'] = next_agent
-        state['has_error'] = False  # Reset error flag after resolution
+        try:    
+            response = model.invoke(prompt)
+            print("Conflict Resolver Response : ", response.content)
+            response_content = response.content
+            if isinstance(response_content, str):
+                response_content = ast.literal_eval(response_content)
+            next_agent = list(response_content.keys())[0]
+            next_task = response_content[next_agent]
+            print("Conflict Resolver recommends ", next_agent, " Task : ", next_task)
+            state['next_task'] = next_task
+            state['next_agent'] = next_agent
+            state['has_error'] = False
+        except Exception as e:
+            print("Conflict Resolver encountered an error: ", str(e))
+            state['next_agent'] = 'END'
+            state['next_task'] = 'End the workflow as the conflict could not be resolved'
     return state
 
 def delegator_logic(state: State) -> State:
@@ -88,7 +112,7 @@ def delegator_logic(state: State) -> State:
     prompt = f"""
         In a Data Engineering team, you are the Delegator. There are different agents working in your team to help with data engineering tasks. Your main task is to understand the users request and call the right agent/agents & assign the appropriate tasks to them.
 
-        In case the user request involves multiple steps, you should break down the request into smaller tasks and assign them to the relevant agents accordingly. You should also manage the flow of information between agents to ensure that the overall task is completed.
+        In case the user request involves multiple steps, you should break down the request into smaller tasks and assign them to the relevant agents accordingly. 
 
         These are the tools provided to you:
 
@@ -118,10 +142,6 @@ def delegator_logic(state: State) -> State:
         Most Recent Agent Responses (showing what actually happened):
         {json.dumps(state.get('model_responses', [])[-2:], indent=2)}
 
-        CRITICAL: Read the agent responses. If a step is already done successfully, DO NOT assign it again.
-        If all parts of the user request are complete, respond with END.
-
-        
         Based on the user request, decide which agent to call next.
 
         Your response should only be a dictionary with the agent name and the task to be assigned to that agent in the following format:
@@ -154,7 +174,6 @@ def delegator_logic(state: State) -> State:
     next_task = response_content[next_agent]
     state['next_task'] = next_task
     state['next_agent'] = next_agent
-    print("Updated State : ", state)
     return state
 
 
@@ -203,14 +222,19 @@ def execute_workflow():
         "conflict_resolver": "conflict_resolver",
         "END": END
     })
+    workflow.add_conditional_edges("conflict_resolver", resolution_flow, {
+        "delegator_logic": "delegator_logic",
+        "call_connector_agent": "call_connector_agent",
+        "call_smart_transformer_agent": "call_smart_transformer_agent",
+        "END": END
+    })
     workflow.add_edge("call_connector_agent", "delegator_logic")
     workflow.add_edge("call_smart_transformer_agent", "delegator_logic")
-    workflow.add_edge("conflict_resolver", "delegator_logic")
     workflow.add_edge("delegator_logic", END)
 
     chain = workflow.compile()
 
-    state = chain.invoke({"user_request" : "Extract the file submissions.csv from the GCP bucket data_storage_1146 in the project data-engineering-476308 and save it locally in data folder. Then read the file and add a new column 'Status' with values 'Success' when Target is 1 & 'Failure' when Target is 0, then save the result to updated_submissions.csv. Finally, upload the updated_submissions.csv file to the same bucket in the same project.", "tasks_done": [{}], "next_agent": "", "next_task": "", "model_responses": [], "has_error": False})
+    state = chain.invoke({"user_request" : "Read the files wb1.csv & wb2.csv from the bucket data_storage_1146 in project data-engineering-476308, merge them on the common column. Then save the result in a new file. Finally, upload this new file to a new bucket merged_data_storage_1146 with the same filename.", "tasks_done": [{}], "next_agent": "", "next_task": "", "model_responses": [], "has_error": False})
 
     print(state)
 
