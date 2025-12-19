@@ -19,6 +19,8 @@ class State(TypedDict):
     next_agent : str
     next_task : str
     has_error : bool
+    error_details : str
+    current_error: str
 
 def semantic_search(query: str, model_responses: List[dict], top_k: int = 2):
     print("Performing semantic search for resolving conflict : ", query)
@@ -38,9 +40,9 @@ def resolution_flow(state: State) -> str:
     if state['next_agent'] == 'END':
         return "END"
     elif "connector" in state['next_agent'].lower():
-        return "call_connector_agent"
+        return "connector_agent"
     elif "transformer" in state['next_agent'].lower():
-        return "call_smart_transformer_agent"
+        return "smart_transformer_agent"
     else:
         return "delegator_logic"
 
@@ -49,8 +51,8 @@ def conflict_resolver(state: State) -> State:
     # Placeholder for conflict resolution logic
     latest_model_response = state['model_responses'][-1] if state['model_responses'] else ""
     if latest_model_response:
-        print("Resolving conflict : {}".format(latest_model_response))
-        relevant_tasks = semantic_search(latest_model_response, state['model_responses'])
+        print("Resolving conflict : {}".format(state['error_details']))
+        relevant_tasks = semantic_search(state['error_details'], state['model_responses'])
         print("Relevant tasks for conflict resolution : ", relevant_tasks)
         prompt = f"""
         In a Data Engineering team, you are the Conflict Resolver. Your teammates are :
@@ -60,22 +62,30 @@ def conflict_resolver(state: State) -> State:
 
         You will be called when either of these agents encounter conflicts in their operations. You will be given the relevant previous responses from these agents.
 
-        Given the Main task, sub task that caused the conflict & the conflict, you will use the analyzed information to rewrite the Sub task where the conflict arose in a way that helps the agents avoid the conflict and successfully complete the task. In case the provided info is insufficient to resolve conflict, you will end the workflow.
+        You are given the main task user requested  : {state['user_request']},
+        Sub_tasks completed successfully : {json.dumps(state['tasks_done'], indent=2)},
+        The Sub_task where the conflict arose : {state['next_task']},
+        Conflict details : {state['error_details']},
+        and relevant previous conversations from these agents : {json.dumps(relevant_tasks, indent=2)}.
 
-        Main task: {state['user_request']}
-        Sub Task where conflict arose: {state['next_task']}
-        Conflict : {latest_model_response}
-
-        Relevant responses from agents to help you: {json.dumps(relevant_tasks, indent=2)}
-
+        Based on this information, rewrite only the conflictd Sub_task with the necessary corrections that would resolve the conflict. Then call the appropriate agent to handle this corrected task.
 
         Your response needs to be a dictionary only in the following format:
 
-        {{"Agent_Name" : "task"}}
+                {{
+            "agent" : "agent_name",
+            "action" : "task description",
+            "parameters" : {{"param1" : "value1", "param2" : "value2",...}}
+        }}
 
+        IMPORTANT FORMATTING RULES:
+        - Use Python boolean syntax: True/False (NOT true/false)
+        - Use double quotes for strings
+        - No trailing commas
+        
         IMPORTANT : In case you find the user provided info is actually incorrect or insufficient to resolve the conflict, respond with :
 
-        {{"END" : "End the workflow as the conflict could not be resolved"}}
+        {{"agent" : "END", "action" : "End the workflow as the conflict could not be resolved", "parameters" : {{}}}}
 
         NOTE : Do not provide any explanations or additional text.
         """
@@ -87,12 +97,13 @@ def conflict_resolver(state: State) -> State:
             response_content = response.content
             if isinstance(response_content, str):
                 response_content = ast.literal_eval(response_content)
-            next_agent = list(response_content.keys())[0]
-            next_task = response_content[next_agent]
-            print("Conflict Resolver recommends ", next_agent, " Task : ", next_task)
-            state['next_task'] = next_task
-            state['next_agent'] = next_agent
+            
+            # Parse structured format
+            state['next_agent'] = response_content.get('agent', 'END')
+            state['next_task'] = response_content.get('action', '') + " with parameters " + str(response_content.get('parameters', {}))
+            print(f"Conflict Resolver recommends {state['next_agent']} - Action: {response_content.get('action')}")
             state['has_error'] = False
+            state['error_details'] = ""
         except Exception as e:
             print("Conflict Resolver encountered an error: ", str(e))
             state['next_agent'] = 'END'
@@ -104,7 +115,7 @@ def delegator_logic(state: State) -> State:
     tasks_done = state.get('tasks_done', [])
     if state.get('has_error', False):
         state['next_agent'] = 'conflict_resolver'
-        state['next_task'] = 'Resolve the error from previous task'
+        state['next_task'] = 'Resolve the error : ' + state.get('error_details', '')
         state['has_error'] = False  # Reset flag
         return state
     # Taking only top 5 requests and responses to avoid overload
@@ -112,17 +123,19 @@ def delegator_logic(state: State) -> State:
     prompt = f"""
         In a Data Engineering team, you are the Delegator. There are different agents working in your team to help with data engineering tasks. Your main task is to understand the users request and call the right agent/agents & assign the appropriate tasks to them.
 
-        In case the user request involves multiple steps, you should break down the request into smaller tasks and assign them to the relevant agents accordingly. 
+        CRITICAL: Break down the user request into SINGLE, ATOMIC tasks. Each task should handle ONE file operation at a time.
 
         These are the tools provided to you:
 
         1. call_connector_agent Tool : This tool can connect to GCS source & perform data operations which include:
 
-        - Downloading files from GCS into local storage
-        - Uploading files to GCS from local storage
+        - Downloading ONE file at a time from GCS into local storage
+        - Uploading ONE file at a time to GCS from local storage
         - Deleting files from GCS
         - Creating new GCS buckets
         - Listing files in GCS buckets
+        
+        IMPORTANT: The connector_agent handles ONE file per call. If multiple files need processing, create separate tasks for each file.
 
         2. call_smart_transformer_agent Tool :  This tool can perform data transformations using pandas based on user instructions. Its capabilities include:
         - Previewing data files (CSV, Excel, JSON, Parquet)
@@ -143,22 +156,37 @@ def delegator_logic(state: State) -> State:
         {json.dumps(state.get('model_responses', [])[-2:], indent=2)}
 
         Based on the user request, decide which agent to call next.
+        
+        REMEMBER: 
+        - Process files ONE AT A TIME - if the user asks for multiple files, handle the first one now
+        - Check what has already been completed to determine the next step
+        - Each connector_agent call should specify only ONE file using "filename" parameter (not "source_file_paths")
 
-        Your response should only be a dictionary with the agent name and the task to be assigned to that agent in the following format:
+        Your response should only be a dictionary with the agent name and the task to be assigned to that agent, the params reqduired for the task in the format:
         {{
-            "next_agent" : "task description"
+            "agent" : "agent_name",
+            "action" : "task description",
+            "parameters" : {{"param1" : "value1", "param2" : "value2"}}
         }}
 
         Example : 
 
         {{
-            "call_connector_agent" : "Extract the file submissions.csv from the GCP bucket data_storage_1146 in the project data-engineering-476308 and save it locally in data folder."
+            "agent" : "connector_agent",
+             
+              "action" : "Extract the file submissions.csv from the GCP bucket data_storage_1146 in the project data-engineering-476308 and save it locally in data folder.",
+              "parameters" : {{"project_id" : "data-engineering-476308", "bucket_name" : "data_storage_1146", "filename" : "submissions.csv"}}
+
         }}
+
+        Note: Use "filename" parameter (singular) for connector_agent, not "source_file_paths".
 
         If the user's request has been completed, respond with:
 
         {{
-            "END" : "The task has been completed."
+            "agent" : "END",
+            "action" : "The task has been completed.",
+            "parameters" : {{}}
         }}
 
         Do not provide any explanations or additional text.
@@ -170,9 +198,10 @@ def delegator_logic(state: State) -> State:
 
     if isinstance(response_content, str):
         response_content = ast.literal_eval(response_content)
-    next_agent = list(response_content.keys())[0]
-    next_task = response_content[next_agent]
-    state['next_task'] = next_task
+    next_agent = response_content['agent']
+    next_task = response_content['action']
+    params = response_content.get('parameters', {})
+    state['next_task'] = next_task + " with parameters " + str(params)
     state['next_agent'] = next_agent
     return state
 
@@ -188,8 +217,10 @@ def call_smart_transformer_agent(state : State) -> State:
     print("Smart Transformer Agent Response : ", response['messages'][-1].content)
     if "ERROR" in response['messages'][-1].content.upper():
         state['has_error'] = True
-    state["tasks_done"].append({"call_smart_transformer_agent": state['next_task']})
-    state['model_responses'].append("smart_transformer_agent" + response['messages'][-1].content)
+        state["error_details"] = response['messages'][-1].content
+    else:
+        state["tasks_done"].append({"call_smart_transformer_agent": state['next_task']})
+        state['model_responses'].append("smart_transformer_agent" + response['messages'][-1].content)
     return state
 
 def call_connector_agent(state : State) -> State:
@@ -199,10 +230,16 @@ def call_connector_agent(state : State) -> State:
     response = connector_agent.invoke(
         {"messages": [{"role": "user", "content": task}]}
     )
-    if "ERROR" in response['messages'][-1].content.upper():
+    response_text = response['messages'][-1].content
+    print("Connector Agent Response : ", response_text)
+    if "ERROR" in response_text.upper():
         state['has_error'] = True
-    state["tasks_done"].append({"call_connector_agent": state['next_task']})
-    state['model_responses'].append("connector_agent:" + response['messages'][-1].content)
+        state['error_details'] = response_text  # Use error_details consistently
+        # Don't update tasks_done or model_responses
+    else:
+        state['error_details'] = ""  # Clear error
+        state["tasks_done"].append({"call_connector_agent": state['next_task']})
+        state['model_responses'].append("connector_agent:" + response['messages'][-1].content)
     return state
 
 
@@ -217,15 +254,15 @@ def execute_workflow():
     workflow.add_edge(START, "delegator_logic")
 
     workflow.add_conditional_edges("delegator_logic", lambda state: state['next_agent'], {
-        "call_connector_agent": "call_connector_agent",
-        "call_smart_transformer_agent": "call_smart_transformer_agent",
+        "connector_agent": "call_connector_agent",
+        "smart_transformer_agent": "call_smart_transformer_agent",
         "conflict_resolver": "conflict_resolver",
         "END": END
     })
     workflow.add_conditional_edges("conflict_resolver", resolution_flow, {
         "delegator_logic": "delegator_logic",
-        "call_connector_agent": "call_connector_agent",
-        "call_smart_transformer_agent": "call_smart_transformer_agent",
+        "connector_agent": "call_connector_agent",
+        "smart_transformer_agent": "call_smart_transformer_agent",
         "END": END
     })
     workflow.add_edge("call_connector_agent", "delegator_logic")

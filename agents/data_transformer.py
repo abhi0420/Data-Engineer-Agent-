@@ -141,7 +141,7 @@ Steps to follow:
    - input_filename: the source file
    - output_filename: where to save results
 
-   In case you encounter any errors during code execution, inform about the error message.
+   In case you encounter any errors during code execution, inform the same to the user with relevant error message. DO NOT rerun the code in case of errors.
 IMPORTANT: Always extract the output filename from user's request. If not mentioned, create one.
 
 NOTE : In case you don't find the file, check in Data folder.
@@ -177,6 +177,7 @@ Steps to follow:
    - output_filename: where to save results
 
 IMPORTANT: Always extract the output filename from user's request. If not mentioned, create one.
+if output file is created, then inform the user about the full path of the output file.
 
 Example:
 User: "Preview data.csv, add column X, save to output.csv"
@@ -185,6 +186,8 @@ You call: generate_pandas_logic(
     input_filename="./data/data.csv",
     output_filename="./data/output.csv"
 )
+
+
 """,
         tools=[preview_data, generate_pandas_logic]
     )

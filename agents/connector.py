@@ -39,6 +39,7 @@ def load_data_to_gcp(project_id: str, bucket_name: str,  source_file_path: str, 
     gcp_obj = GCPSource(project_id, bucket_name)
     bucket_exists = gcp_obj.bucket_exists()
     if not os.path.exists(source_file_path):
+        print("Path does not exist locally, prepending ./data/")
         source_file_path = "./data/" + source_file_path
 
     if not bucket_exists:
@@ -68,16 +69,15 @@ connector_agent = create_agent(
         model=model,
         system_prompt="""You are a connector agent. You can connect to GCS source to perform data operations.
 
-CRITICAL: Examine the user's request carefully. 
+Examine the user's request carefully to understand what needs to be done and extract the required parameters.
 
-If ANY required parameter is missing or cannot be extracted from the user's request, respond with:
-"ERROR: Missing required information - [describe what's missing]. Cannot proceed."
+Use your judgment to infer reasonable values for optional parameters from the task description and context. 
 
-DO NOT make assumptions. DO NOT use placeholder or invented values. DO NOT call tools with incomplete information.
+However, if critical information is not mentioned and cannot be determined from context, respond with:
+"ERROR: Missing required information - [list missing parameters]. Cannot proceed."
 
-If all required information is present, use the appropriate tool to perform the operation.
-In case any tool returns an error, report it back as an ERROR.
-Once complete, inform the user about the status of the operation.""",
+Use the appropriate tools to complete the operation. Report any tool errors back as ERROR messages.
+Once complete, provide clear status with relevant details.""",
         tools=[extract_data_from_gcp, load_data_to_gcp]
          )
 
