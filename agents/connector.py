@@ -2,7 +2,7 @@ from langchain.messages import SystemMessage
 from langchain_openai import ChatOpenAI
 from langchain.agents import create_agent
 from langchain.tools import tool
-from sources import GCPSource
+from gcs_source import GCPSource
 import time
 import os
 
