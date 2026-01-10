@@ -1,7 +1,9 @@
 from google.oauth2 import service_account
 from google.cloud import storage
 import os
+from dotenv import load_dotenv
 
+load_dotenv()
 path_to_gcs_service_account = os.getenv("GOOGLE_APPLICATION_CREDENTIALS")
 
 class GCPSource:

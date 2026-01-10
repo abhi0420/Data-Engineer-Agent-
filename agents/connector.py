@@ -5,7 +5,9 @@ from langchain.tools import tool
 from gcs_source import GCPSource
 import time
 import os
+from dotenv import load_dotenv
 
+load_dotenv()
 model = ChatOpenAI(model="gpt-4o-mini", temperature=0.2, max_tokens=1000)
 
 

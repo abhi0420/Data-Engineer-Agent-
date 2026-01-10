@@ -5,7 +5,9 @@ import pandas as pd
 from datetime import datetime
 import os
 import shutil
+from dotenv import load_dotenv
 
+load_dotenv()
 model = ChatOpenAI(model="gpt-4o-mini", temperature=0.2, max_tokens=1000)
 
 @tool

@@ -3,7 +3,9 @@ from langchain.tools import tool
 from langchain_openai import ChatOpenAI
 from agents.data_transformer import smart_transformer_agent
 from agents.connector import connector_agent
+from dotenv import load_dotenv
 
+load_dotenv()
 model = ChatOpenAI(model="gpt-4o-mini", temperature=0.2, max_tokens=1000)
 
 def call_smart_transformer_agent(task: str) -> str:
