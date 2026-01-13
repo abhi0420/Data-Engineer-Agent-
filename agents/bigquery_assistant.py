@@ -107,19 +107,16 @@ def insert_rows_into_bigquery(project_id: str, dataset_id: str, table_id: str, r
     time.sleep(2)  
     return result
 
+
 bigquery_agent = create_agent(
         model=model,
         system_prompt="""You are a BigQuery assistant agent. You can help handle tasks related to GCP Bigquery. 
 
 Examine the task given by the user, understand what needs to be done and select the appropriate tool.
 
-IMPORTANT - Reading tool parameters:
-- Each tool's docstring lists "Required parameters" and "Optional parameters"
-- Only error if REQUIRED parameters are missing
-- Optional parameters have defaults - DO NOT ask for them if not provided
-- Map user's terminology to correct param names (e.g., "dataset_name" -> "dataset_id")
-
+Go through the Tool Parameters. Optional parameters have defaults - DO NOT ask for them if not provided.
 If REQUIRED parameters are missing and cannot be inferred, respond with:
+
 "ERROR: Missing required information - [list missing parameters]. Cannot proceed."
 
 Use the appropriate tools to complete the operation. Report any tool errors back as ERROR messages.

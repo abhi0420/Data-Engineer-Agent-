@@ -59,42 +59,21 @@ def conflict_resolver(state: State) -> State:
         print("Resolving conflict : {}".format(state['error_details']))
         relevant_tasks = semantic_search(state['error_details'], state['model_responses'])
         print("Relevant tasks for conflict resolution : ", relevant_tasks)
-        prompt = f"""
-        In a Data Engineering team, you are the Conflict Resolver. Your teammates are :
+        prompt = f"""You are the Conflict Resolver. Fix failed agent tasks using context.
 
-        1. Connector Agent : Can connect to GCS source & perform data operations 
-        2. Smart Transformer Agent : Can perform data transformations using pandas based on user instructions.
-        3. BigQuery Agent : Can perform operations on BigQuery based on user instructions.
+AGENTS: connector_agent (GCS), smart_transformer_agent (pandas), bigquery_agent (BigQuery)
 
-        You will be called when either of these agents encounter conflicts in their operations. 
+USER REQUEST: {state['user_request']}
+COMPLETED: {json.dumps(state['tasks_done'], indent=2)}
+FAILED TASK: {state['next_task']}
+ERROR: {state['error_details']}
+CONTEXT: {json.dumps(relevant_tasks, indent=2)}
 
-        You are given the main task user requested  : {state['user_request']},
-        Sub_tasks completed successfully : {json.dumps(state['tasks_done'], indent=2)},
-        The Sub_task where the conflict arose : {state['next_task']},
-        Conflict details : {state['error_details']},
-        and relevant previous conversations from these agents : {json.dumps(relevant_tasks, indent=2)}.
+Rewrite the failed task with corrections. Response format (dict only):
+{{"agent": "agent_name", "action": "corrected task", "parameters": {{"param": "value"}}}}
 
-        Based on this information, rewrite only the conflictd Sub_task with the necessary corrections that would resolve the conflict. Then call the appropriate agent to handle this corrected task.
-
-        Your response needs to be a dictionary only in the following format:
-
-                {{
-            "agent" : "agent_name",
-            "action" : "task description",
-            "parameters" : {{"param1" : "value1", "param2" : "value2",...}}
-        }}
-
-        FORMATTING RULES:
-        - Use Python boolean syntax: True/False
-        - Use double quotes for strings
-        - No trailing commas
-        
-        IMPORTANT : In case you find the user provided info is actually incorrect or insufficient to resolve the conflict, respond with :
-
-        {{"agent" : "END", "action" : "End the workflow as the conflict could not be resolved", "parameters" : {{}}}}
-
-        NOTE : Do not provide any explanations or additional text.
-        """
+If unresolvable:
+{{"agent": "END", "action": "Cannot resolve", "parameters": {{}}}}"""
         # Implement conflict resolution based on relevant tasks
         # For now, just log the relevant tasks
         try:    
@@ -126,82 +105,30 @@ def delegator_logic(state: State) -> State:
         return state
     # Taking only top 5 requests and responses to avoid overload
 
-    prompt = f"""
-        In a Data Engineering team, you are the Delegator. There are different agents working in your team to help with data engineering tasks. Your main task is to understand users request & call the right agent/agents & assign the appropriate tasks to them.
+    prompt = f"""You are the Delegator in a Data Engineering team. Break user requests into ATOMIC tasks and route to agents.
 
-        CRITICAL: Break down the user request into SINGLE, ATOMIC tasks. Each task should handle ONE file operation at a time.
+AGENTS:
+1. connector_agent: GCS ops (download/upload ONE file, delete, list, create bucket)
+2. smart_transformer_agent: Pandas transformations (preview, transform, save CSV/Excel/JSON/Parquet)
+3. bigquery_agent: BigQuery ops (create dataset/table, insert rows, query, load from GCS)
+4. conflict_resolver: Resolve errors from other agents
 
-        These are the tools provided to you:
+USER REQUEST: {user_request}
 
-        1. call_connector_agent Tool : This tool can connect to GCS source & perform data operations which include:
+COMPLETED: {json.dumps(tasks_done[-5:], indent=2)}
 
-        - Downloading ONE file at a time from GCS into local storage
-        - Uploading ONE file at a time to GCS from local storage
-        - Deleting files from GCS
-        - Creating new GCS buckets
-        - Listing files in GCS buckets
-        
-        IMPORTANT: The connector_agent handles ONE file per call. If multiple files need processing, create separate tasks for each file.
+RECENT RESPONSES: {json.dumps(state.get('model_responses', [])[-2:], indent=2)}
 
-        2. call_smart_transformer_agent Tool :  Can perform data transformations using pandas based on user instructions. Capabilities are :
-        - Previewing data files (CSV, Excel, JSON, Parquet)
-        - Understanding user instructions for data transformations
-        - Generating pandas code to perform transformations
-        - Saving the transformed data to specified file formats (CSV, Excel, JSON, Parquet)
-        - Executing data transformations (e.g., aggregating, joining)
+RULES:
+- ONE file per connector_agent call (use "filename" param)
+- Check COMPLETED before assigning - don't repeat done tasks
+- If ALL tasks done, return END
 
-        3. call_bigquery_agent Tool : Can perform operations on BigQuery based on user instructions. Capabilities include:
-        - Creating datasets & tables
-        - Inserting rows into tables
-        - Querying data
-        - Loading data from GCS into BigQuery tables
+RESPONSE FORMAT (dict only, no text):
+{{"agent": "agent_name", "action": "task description", "parameters": {{"param": "value"}}}}
 
-        3. conflict_resolver Tool : Helps resolve any conflicts that arise during the execution of tasks by other agents. Call this tool when you identify conflicting instructions or errors in task execution. 
-
-
-        This is the user's request: {user_request}
-
-        For this request, the progress so far has been:
-        Tasks Completed: {json.dumps(tasks_done[-5:], indent=2)}
-
-        Recent Agent Responses (showing what actually happened):
-        {json.dumps(state.get('model_responses', [])[-2:], indent=2)}
-
-        Based on the user request, decide which agent to call next.
-        
-        REMEMBER: 
-        - Process files ONE AT A TIME - if the user asks for multiple files, handle the first one now
-        - Each connector_agent call should specify only ONE file using "filename" parameter (not "source_file_paths")
-
-        Your response should only be a dictionary with agent name and task to be assigned to that agent, params required for the task in the format:
-        {{
-            "agent" : "agent_name",
-            "action" : "task description",
-            "parameters" : {{"param1" : "value1", "param2" : "value2"}}
-        }}
-
-        Example : 
-
-        {{
-            "agent" : "connector_agent",
-             
-              "action" : "Extract the file submissions.csv from the GCP bucket data_storage_1146 in the project data-engineering-476308 and save it locally in data folder.",
-              "parameters" : {{"project_id" : "data-engineering-476308", "bucket_name" : "data_storage_1146", "filename" : "submissions.csv"}}
-
-        }}
-
-        Note: Use "filename" parameter (singular) for connector_agent, not "source_file_paths".
-
-        If the user's request has been completed, respond with:
-
-        {{
-            "agent" : "END",
-            "action" : "The task has been completed.",
-            "parameters" : {{}}
-        }}
-
-        Do not provide any explanations or additional text.
-    """
+END FORMAT:
+{{"agent": "END", "action": "Task completed.", "parameters": {{}}}}"""
 
     response = model.invoke(prompt)
     print("Delegator Response : ", response.content)
@@ -303,7 +230,9 @@ def execute_workflow():
 
     chain = workflow.compile()
 
-    state = chain.invoke({"user_request" : "Read the files wb1.csv & wb2.csv from the bucket data_storage_1146 in project data-engineering-476308, merge them on the common column. Then save the result in a new file. Upload this new file to a new bucket merged_data_storage_1146 with the same filename. Once done, create a big query dataset 'emp_data' in project data-engineering-476308, next create a table 'employee' in this dataset and finally load the fiile in gcs bucket into this table.", "tasks_done": [{}], "next_agent": "", "next_task": "", "model_responses": [], "has_error": False})
+    state = chain.invoke({"user_request" : """Read the files wb1.csv & wb2.csv from the bucket data_storage_1146 in project data-engineering-476308, merge them on the common column. Then save the result in a new file. Upload this new file to a new bucket merged_data_storage_1146 with the same filename. Once done,
+    - create a big query dataset 'emp_data' in project data-engineering-476308
+    - create a table 'employee' in this dataset with schema E_id (STRING), E_name (STRING), Salary (INTEGER)""", "tasks_done": [{}], "next_agent": "", "next_task": "", "model_responses": [], "has_error": False})
 
     print(state)
 
