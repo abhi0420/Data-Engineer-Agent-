@@ -149,7 +149,7 @@ Examine the task given by the user, understand what needs to be done and select 
 Go through the Tool Parameters. Optional parameters have defaults - DO NOT ask for them if not provided.
 If REQUIRED parameters are missing and cannot be inferred, respond with:
 
-"ERROR: Missing required information - [list missing parameters]. Cannot proceed."
+"ERROR: The task requires the parameters - [list of all parameters(ALL not just the missing params)]. Cannot proceed.". Mentioning ALL parameters is important so conlfict can be resolved in one go.
 
 Use the appropriate tools to complete the operation. Report any tool errors back as ERROR messages.
 Once complete, provide clear status with relevant details.

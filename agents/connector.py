@@ -76,7 +76,7 @@ Examine the user's request carefully to understand what needs to be done and ext
 Use your judgment to infer reasonable values for optional parameters from the task description and context. 
 
 However, if critical information is not mentioned and cannot be determined from context, respond with:
-"ERROR: Missing required information - [list missing parameters]. Cannot proceed."
+"ERROR: The task requires the parameters - [list of all required parameters(ALL not just missing params)]. Cannot proceed."
 
 Use the appropriate tools to complete the operation. Report any tool errors back as ERROR messages.
 Once complete, provide clear status with relevant details.""",
