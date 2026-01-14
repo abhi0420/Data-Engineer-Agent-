@@ -83,6 +83,38 @@ def create_bigquery_table(project_id: str, dataset_id: str, table_id: str, schem
     return result
 
 @tool
+def load_table_from_gcs(project_id: str, dataset_id: str, table_id: str, gcs_uri: str, schema: str, file_format: str = "CSV") -> str:
+    """Loads data into a BigQuery table from a GCS URI.
+    
+    Required parameters:
+        - project_id: The GCP project ID
+        - dataset_id: The dataset containing the table
+        - table_id: The target table name
+        - gcs_uri: The GCS URI of the source file (e.g., gs://bucket_name/file.csv)
+        - schema: List of dicts with 'name', 'type', and optional 'mode' (default: NULLABLE)
+                  Example: [bigquery.SchemaField("ID", "STRING"), bigquery.SchemaField("Name", "STRING")]
+
+    Optional parameters:
+        - file_format: The format of the source file (e.g., CSV, JSON, PARQUET). Default is CSV.
+    """
+    
+    bq_obj = BigQuerySource(project_id)
+    print("BigQuery Client Initialized.")
+    
+    # Convert schema string to list of bigquery.SchemaField
+    schema_fields = []
+    try:
+        schema_list = eval(schema)  # Expecting schema to be a string representation of a list of dicts
+        for field in schema_list:
+            schema_fields.append(bigquery.SchemaField(name=field['name'], field_type=field['type'], mode=field.get('mode', 'NULLABLE')))
+    except Exception as e:
+        return f"ERROR : Invalid schema format. Exception: {str(e)}"
+    
+    result = bq_obj.load_table_from_gcs(dataset_id, table_id, gcs_uri, schema_fields, file_format)
+    time.sleep(2)  
+    return result
+
+@tool
 def insert_rows_into_bigquery(project_id: str, dataset_id: str, table_id: str, rows: str) -> str:
     """Inserts rows into a BigQuery table.
     
@@ -122,7 +154,7 @@ If REQUIRED parameters are missing and cannot be inferred, respond with:
 Use the appropriate tools to complete the operation. Report any tool errors back as ERROR messages.
 Once complete, provide clear status with relevant details.
        """,
-        tools=[execute_bigquery_query, create_bigquery_dataset, create_bigquery_table, insert_rows_into_bigquery]
+        tools=[execute_bigquery_query, create_bigquery_dataset, create_bigquery_table, insert_rows_into_bigquery, load_table_from_gcs]
     )
 
 if __name__ == "__main__":
