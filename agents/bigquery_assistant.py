@@ -83,16 +83,16 @@ def create_bigquery_table(project_id: str, dataset_id: str, table_id: str, schem
     return result
 
 @tool
-def load_table_from_gcs(project_id: str, dataset_id: str, table_id: str, gcs_uri: str, schema: str, file_format: str = "CSV") -> str:
+def load_table_from_gcs(project_id: str, dataset_id: str, table_id: str, source_uri: str, schema: str, file_format: str = "CSV") -> str:
     """Loads data into a BigQuery table from a GCS URI.
     
     Required parameters:
         - project_id: The GCP project ID
         - dataset_id: The dataset containing the table
         - table_id: The target table name
-        - gcs_uri: The GCS URI of the source file (e.g., gs://bucket_name/file.csv)
+        - source_uri: The GCS URI of the source file (e.g., gs://bucket_name/file.csv)
         - schema: List of dicts with 'name', 'type', and optional 'mode' (default: NULLABLE)
-                  Example: [bigquery.SchemaField("ID", "STRING"), bigquery.SchemaField("Name", "STRING")]
+                  Example: [{"name": "ID", "type": "STRING"}, {"name": "Name", "type": "STRING"}]
 
     Optional parameters:
         - file_format: The format of the source file (e.g., CSV, JSON, PARQUET). Default is CSV.
@@ -110,7 +110,7 @@ def load_table_from_gcs(project_id: str, dataset_id: str, table_id: str, gcs_uri
     except Exception as e:
         return f"ERROR : Invalid schema format. Exception: {str(e)}"
     
-    result = bq_obj.load_table_from_gcs(dataset_id, table_id, gcs_uri, schema_fields, file_format)
+    result = bq_obj.load_data_from_gcs(dataset_id, table_id, source_uri, file_format, 1, schema_fields)
     time.sleep(2)  
     return result
 
@@ -149,7 +149,7 @@ Examine the task given by the user, understand what needs to be done and select 
 Go through the Tool Parameters. Optional parameters have defaults - DO NOT ask for them if not provided.
 If REQUIRED parameters are missing and cannot be inferred, respond with:
 
-"ERROR: The task requires the parameters - [list of all parameters(ALL not just the missing params)]. Cannot proceed.". Mentioning ALL parameters is important so conlfict can be resolved in one go.
+"ERROR: The task requires the parameters - [list of all parameters]. Cannot proceed.". Mentioning ALL parameters is important so conlfict can be resolved in one go.
 
 Use the appropriate tools to complete the operation. Report any tool errors back as ERROR messages.
 Once complete, provide clear status with relevant details.

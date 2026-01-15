@@ -58,7 +58,7 @@ def conflict_resolver(state: State) -> State:
     if latest_model_response:
         print("Resolving conflict : {}".format(state['error_details']))
         relevant_tasks = semantic_search(state['error_details'], state['model_responses'])
-        print("Relevant tasks for conflict resolution : ", relevant_tasks)
+        #print("Relevant tasks for conflict resolution : ", relevant_tasks)
         prompt = f"""
         In a Data Engineering team, you are the Conflict Resolver. Your teammates are :
 
@@ -66,9 +66,10 @@ def conflict_resolver(state: State) -> State:
         2. Smart Transformer Agent : Can perform data transformations using pandas based on user instructions.
         3. BigQuery Agent : Can perform operations on BigQuery based on user instructions.
 
-        You will be called if any of these agents encounter errors 
+        You will be called when either of these agents encounter conflicts in their operations. 
 
-        The main task user requested  : {state['user_request']},
+        You are given the main task user requested  : {state['user_request']},
+        Sub_tasks completed successfully : {json.dumps(state['tasks_done'], indent=2)},
         The Sub_task where the conflict arose : {state['next_task']},
         Conflict details : {state['error_details']},
         and relevant previous conversations from these agents : {json.dumps(relevant_tasks, indent=2)}.
@@ -180,11 +181,11 @@ def delegator_logic(state: State) -> State:
 
             "agent" : "connector_agent",
              
-              "action" : "Extract the file abc.csv from GCP bucket x in project y.",
+              "action" : "Extract the file abc.csv from GCP bucket x",
               "parameters" : {{"project_id" : "y", "bucket_name" : "x", "filename" : "abc.csv"}}
 
         }}
-
+        Ensure all parameters required for the task are included.
         When request is complete, respond with :
 
         {{
@@ -260,12 +261,11 @@ def call_bigquery_agent(state : State) -> State:
     print("BigQuery Agent Response : ", response_text)
     if "ERROR" in response_text.upper():
         state['has_error'] = True
-        state['error_details'] = response_text  # Use error_details consistently
-        # Don't update tasks_done or model_responses
+        state['error_details'] = response_text
     else:
-        state['error_details'] = ""  # Clear error
+        state['error_details'] = ""
         state["tasks_done"].append({"bigquery_agent": state['next_task']})
-        state['model_responses'].append("bigquery_agent:" + response['messages'][-1].content)
+        state['model_responses'].append("bigquery_agent:" + response_text)
     return state
 
 def execute_workflow():
@@ -295,14 +295,12 @@ def execute_workflow():
     workflow.add_edge("call_connector_agent", "delegator_logic")
     workflow.add_edge("call_smart_transformer_agent", "delegator_logic")
     workflow.add_edge("call_bigquery_agent", "delegator_logic")
-    workflow.add_edge("delegator_logic", END)
 
     chain = workflow.compile()
 
     state = chain.invoke({"user_request" : """Read the files wb1.csv & wb2.csv from the bucket data_storage_1146 in project data-engineering-476308, merge them on the common column. Then save the result in a new file. Upload this new file to a new bucket merged_data_storage_1146 with the same filename. Once done,
     - create a big query dataset 'emp_data' in project data-engineering-476308,
-    - create a table 'employee' in this dataset with schema E_id (STRING), E_name (STRING), Salary (INTEGER),
-    - finally load the file uploaded to gcs earlier into employee table.""", "tasks_done": [{}], "next_agent": "", "next_task": "", "model_responses": [], "has_error": False})
+    - finally call load_table_from_gcs with schema E_id (STRING), E_name (STRING), Salary (INTEGER).""", "tasks_done": [{}], "next_agent": "", "next_task": "", "model_responses": [], "has_error": False})
 
     print(state)
 

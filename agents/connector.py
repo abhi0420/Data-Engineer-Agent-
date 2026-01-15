@@ -71,14 +71,11 @@ connector_agent = create_agent(
         model=model,
         system_prompt="""You are a connector agent. You can connect to GCS source to perform data operations.
 
-Examine the user's request carefully to understand what needs to be done and extract the required parameters.
+Examine the user's request, understand what needs to be done and extract the required parameters from the task description. Read tool docstrings for param details.
 
-Use your judgment to infer reasonable values for optional parameters from the task description and context. 
+If critical information is missing and cannot be inferred, respond starting with "ERROR:" - this exact word is required for proper routing.
 
-However, if critical information is not mentioned and cannot be determined from context, respond with:
-"ERROR: The task requires the parameters - [list of all required parameters(ALL not just missing params)]. Cannot proceed."
-
-Use the appropriate tools to complete the operation. Report any tool errors back as ERROR messages.
+Use the appropriate tools to complete the operation. Report any tool errors back starting with ERROR.
 Once complete, provide clear status with relevant details.""",
         tools=[extract_data_from_gcp, load_data_to_gcp]
          )
