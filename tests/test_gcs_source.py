@@ -22,24 +22,99 @@ class TestGCPSource:
     def gcp_source(self, mock_credentials, mock_storage_client):
         """Create GCPSource with mocked dependencies - order matters!"""
         from gcs_source import GCPSource
-        return GCPSource(project_id="test_project")
+        return GCPSource(project_id="test_project", bucket_name="test_bucket")
 
     # ========== BUCKET EXISTS TESTS ==========
 
     def test_bucket_exists_true(self, gcp_source, mock_storage_client):
         """Test bucket exists returns True"""
-        mock_storage_client.lookup_bucket.return_value = Mock()
+        # gcp_source.bucket is mock_storage_client.bucket() return value
+        mock_bucket = mock_storage_client.bucket.return_value
+        mock_bucket.exists.return_value = True
         
         exists = gcp_source.bucket_exists()
         
-        mock_storage_client.lookup_bucket.assert_called_once_with(gcp_source.bucket_name)
+        mock_bucket.exists.assert_called_once()
         assert exists is True
 
     def test_bucket_exists_false(self, gcp_source, mock_storage_client):
         """Test bucket exists returns False"""
-        mock_storage_client.lookup_bucket.return_value = None
+        mock_bucket = mock_storage_client.bucket.return_value
+        mock_bucket.exists.return_value = False
         
         exists = gcp_source.bucket_exists()
         
-        mock_storage_client.lookup_bucket.assert_called_once_with(gcp_source.bucket_name)
+        mock_bucket.exists.assert_called_once()
         assert exists is False
+
+    # ========== UPLOAD FILE TESTS ==========
+
+    def test_upload_file_success(self, gcp_source, mock_storage_client):
+        """Test successful file upload"""
+        mock_bucket = mock_storage_client.bucket.return_value
+        mock_blob = mock_bucket.blob.return_value
+
+        with patch('os.path.exists') as mock_exists:
+            mock_exists.return_value = True
+            
+            result = gcp_source.upload_file("local_path.txt", "dest_blob.txt")
+            
+            mock_bucket.blob.assert_called_once_with("dest_blob.txt")
+            mock_blob.upload_from_filename.assert_called_once_with("local_path.txt")
+            assert "gs://" in result
+            assert "test_bucket" in result
+
+    def test_upload_file_failure(self, gcp_source):
+        """Test file upload failure due to missing source file"""
+        with patch('os.path.exists') as mock_exists:
+            mock_exists.return_value = False
+            
+            result = gcp_source.upload_file("nonexistent_path.txt", "dest_blob.txt")
+            
+            assert "ERROR" in result
+
+    # ========== DOWNLOAD FILE TESTS ==========
+
+    def test_download_file_success(self, gcp_source, mock_storage_client):
+        """Test successful file download"""
+        mock_bucket = mock_storage_client.bucket.return_value
+        mock_blob = mock_bucket.blob.return_value
+        mock_blob.exists.return_value = True
+
+        with patch('os.makedirs'):
+            result = gcp_source.download_file("test.csv")
+            
+            mock_bucket.blob.assert_called_with("test.csv")
+            mock_blob.download_to_filename.assert_called_once()
+            assert "test.csv" in result
+
+    def test_download_file_not_found(self, gcp_source, mock_storage_client):
+        """Test download when file doesn't exist"""
+        mock_bucket = mock_storage_client.bucket.return_value
+        mock_blob = mock_bucket.blob.return_value
+        mock_blob.exists.return_value = False
+
+        result = gcp_source.download_file("nonexistent.csv")
+        
+        assert "ERROR" in result
+        assert "not found" in result
+
+    def test_list_blobs(self, gcp_source, mock_storage_client):
+        """Test List blobs in bucket"""
+        mock_bucket = mock_storage_client.bucket.return_value
+        mock_blob1 = Mock()
+        mock_blob1.name = "file1.txt"
+        mock_blob2 = Mock()
+        mock_blob2.name = "file2.txt"
+        mock_bucket.list_blobs.return_value = [mock_blob1, mock_blob2]
+
+        blobs = gcp_source.list_blobs()
+        gcp_source.bucket.list_blobs.assert_called_once()
+        assert blobs == ["file1.txt", "file2.txt"]
+        
+
+
+if __name__ == "__main__":
+    pytest.main()
+    
+    
