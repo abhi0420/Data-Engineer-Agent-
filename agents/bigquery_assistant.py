@@ -55,6 +55,49 @@ def create_bigquery_dataset(project_id: str, dataset_id: str, location: str = "U
     return result
 
 @tool
+def create_view(project_id: str, dataset_id: str, view_id: str, query: str) -> str:
+    """
+    Creates a BigQuery view in the specified dataset.
+    """
+    bq_obj = BigQuerySource(project_id)
+    print("BigQuery Client Initialized.")
+    
+    result = bq_obj.create_view(dataset_id, view_id, query)
+    time.sleep(2)  
+    return result
+
+@tool
+def create_partitioned_table(project_id: str, dataset_id: str, table_id: str, schema: str, partition_field: str) -> str:
+    """Creates a partitioned BigQuery table in the specified dataset with the given schema.
+    
+    Required parameters:
+        - project_id: The GCP project ID
+        - dataset_id: The dataset containing the table
+        - table_id: The name of the table to create
+        - schema: List of dicts with 'name', 'type', and optional 'mode' (default: NULLABLE)
+                  Example: [{'name': 'col1', 'type': 'STRING'}, {'name': 'col2', 'type': 'INTEGER'}]
+        - partition_field: The field to partition the table on
+    """
+    
+    bq_obj = BigQuerySource(project_id)
+    print("BigQuery Client Initialized.")
+    
+    # Convert schema string to list of bigquery.SchemaField
+    schema_fields = []
+    try:
+        schema_list = eval(schema)  # Expecting schema to be a string representation of a list of dicts
+        for field in schema_list:
+            schema_fields.append(bigquery.SchemaField(name=field['name'], field_type=field['type'], mode=field.get('mode', 'NULLABLE')))
+    except Exception as e:
+        return f"ERROR : Invalid schema format. Exception: {str(e)}"
+    
+    result = bq_obj.create_partitioned_table(dataset_id, table_id, schema_fields, partition_field)
+    time.sleep(2)  
+    return result
+
+
+
+@tool
 def create_bigquery_table(project_id: str, dataset_id: str, table_id: str, schema: str) -> str:
     """Creates a BigQuery table in the specified dataset with the given schema.
     

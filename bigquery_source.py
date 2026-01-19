@@ -62,6 +62,30 @@ class BigQuerySource:
             return f"ERROR : Failed to insert rows into table {table_id} . Exception: {str(e)}"
         return f"Rows inserted into table {table_id}."
     
+    def create_view(self, dataset_id: str, view_id: str, query: str) -> str:
+        view_ref = self.client.dataset(dataset_id).table(view_id)
+        view = bigquery.Table(view_ref)
+        view.view_query = query
+        try:
+            self.client.create_table(view)
+        except Exception as e:
+            return f"ERROR : Failed to create view {view_id} in dataset {dataset_id} . Exception: {str(e)}"
+        return f"View {view_id} created in dataset {dataset_id}."
+    
+    def create_partitioned_view(self, dataset_id: str, view_id: str, query: str, partition_field: str) -> str:
+        view_ref = self.client.dataset(dataset_id).table(view_id)
+        view = bigquery.Table(view_ref)
+        view.view_query = query
+        view.time_partitioning = bigquery.TimePartitioning(
+            type_=bigquery.TimePartitioningType.DAY,
+            field=partition_field
+        )
+        try:
+            self.client.create_table(view)
+        except Exception as e:
+            return f"ERROR : Failed to create partitioned view {view_id} in dataset {dataset_id} . Exception: {str(e)}"
+        return f"Partitioned View {view_id} created in dataset {dataset_id}."
+    
     def query(self, query: str) -> pd.DataFrame:
         try:
             query_job = self.client.query(query)
