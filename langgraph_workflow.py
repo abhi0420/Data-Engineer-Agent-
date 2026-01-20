@@ -55,9 +55,13 @@ def conflict_resolver(state: State) -> State:
     """Resolves conflicts in the state if any."""
     # Placeholder for conflict resolution logic
     latest_model_response = state['model_responses'][-1] if state['model_responses'] else ""
-    if latest_model_response:
+    error_details = state.get('error_details', "")
+    if latest_model_response or error_details:
         print("Resolving conflict : {}".format(state['error_details']))
-        relevant_tasks = semantic_search(state['error_details'], state['model_responses'])
+        if len(state['model_responses']) == 0:
+            relevant_tasks = []
+        else:
+            relevant_tasks = semantic_search(state['error_details'], state['model_responses'])
         #print("Relevant tasks for conflict resolution : ", relevant_tasks)
         prompt = f"""
         In a Data Engineering team, you are the Conflict Resolver. Your teammates are :
@@ -91,7 +95,7 @@ def conflict_resolver(state: State) -> State:
         - Use double quotes for strings
         - No trailing commas
         
-        IMPORTANT : In case you find the user provided info is actually incorrect or insufficient to resolve the conflict, respond with :
+        IMPORTANT : In case the user provided info is actually incorrect or insufficient to resolve the conflict, DO NOT MAKE any assumptions. Instead, respond with :
 
         {{"agent" : "END", "action" : "End the workflow as the conflict could not be resolved", "parameters" : {{}}}}
 
@@ -127,7 +131,9 @@ def delegator_logic(state: State) -> State:
         state['has_error'] = False  # Reset flag
         return state
     # Taking only top 5 requests and responses to avoid overload
-
+    print(state)
+    if state['next_agent'] == 'END':
+        return state
     prompt = f"""
         In a Data Engineering team, you are the Delegator. Your main task is to understand users request, break it into atomic tasks & call the right tool & assign the appropriate tasks to them. You are provided with the following Agents
 
@@ -268,7 +274,7 @@ def call_bigquery_agent(state : State) -> State:
         state['model_responses'].append("bigquery_agent:" + response_text)
     return state
 
-def execute_workflow():
+def execute_workflow(user_request):
     workflow = StateGraph(State)
 
     workflow.add_node("delegator_logic", delegator_logic)
@@ -298,14 +304,16 @@ def execute_workflow():
 
     chain = workflow.compile()
 
-    state = chain.invoke({"user_request" : """Read the files wb1.csv & wb2.csv from the bucket data_storage_1146 in project data-engineering-476308, merge them on the common column. Then save the result in a new file. Upload this new file to a new bucket merged_data_storage_1146 with the same filename. Once done,
-    - create a big query dataset 'emp_data' in project data-engineering-476308,
-    - finally call load_table_from_gcs with schema E_id (STRING), E_name (STRING), Salary (INTEGER).""", "tasks_done": [{}], "next_agent": "", "next_task": "", "model_responses": [], "has_error": False})
+    state = chain.invoke({"user_request" : user_request, "tasks_done": [{}], "next_agent": "", "next_task": "", "model_responses": [], "has_error": False})
 
     print(state)
 
 if __name__ == "__main__":
-    execute_workflow()
+    user_request = """Read the files wb1.csv & wb2.csv from the bucket data_storage_1146 in project data-engineering-476308, merge them on the common column. Then save the result in a new file. Upload this new file to a new bucket merged_data_storage_1146 with the same filename. Once done,
+    - create a big query dataset 'emp_data' in project data-engineering-476308
+    """
+
+    execute_workflow(user_request)
 
 
 
