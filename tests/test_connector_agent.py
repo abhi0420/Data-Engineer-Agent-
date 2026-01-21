@@ -1,52 +1,29 @@
-from langchain.messages import HumanMessage, SystemMessage, AIMessage, ToolMessage
 from agentevals.trajectory.match import create_trajectory_match_evaluator
-#from agents.connector import connector_agent
-from langgraph_workflow import execute_workflow
+from agents.connector import connector_agent
+from langchain.messages import HumanMessage,AIMessage,ToolMessage, ToolCall
 
 
 
-# evals/run_evals.py
-import json
-from agentevals.trajectory.llm import create_trajectory_llm_as_judge
+strict_evaluator = create_trajectory_match_evaluator(trajectory_match_mode="strict")
+basic_evaluator = create_trajectory_match_evaluator(trajectory_match_mode="unordered")
 
-def run_workflow_and_get_trajectory(request):
-    """Run your workflow and extract the trajectory"""
-    from langgraph_workflow import execute_workflow
-    
-    result = execute_workflow(request)
-    
-    # Convert your state to OpenAI message format
-    trajectory = []
-    trajectory.append({"role": "user", "content": request})
-    
-    for task in result['tasks_done']:
-        if task:  # Skip empty dicts
-            agent = list(task.keys())[0]
-            action = task[agent]
-            trajectory.append({
-                "role": "assistant",
-                "content": f"Agent: {agent}, Action: {action}"
-            })
-    
-    return trajectory
+def test_extract_data_from_gcp_tool_call():
+    result = connector_agent.invoke(
+    {"messages":
+    [{"role": "user", 
+    "content": "Extract the file submissions.csv from the GCP bucket data_storage_1146 in the project data-engineering-476308 and save it locally.  "}]}
 
-# Core scenarios to test
-SCENARIOS = [
-    "Download file.csv from bucket data_storage_1146",
-    "Merge ./data/file1.csv and ./data/file2.csv on column id",
-    "Create BigQuery dataset test_data in project my-project",
-]
+)
+    print(result['messages'][-1].content)
+    reference_trajectory = [
+        HumanMessage(content="Extract the file submissions.csv from the GCP bucket data_storage_1146 in the project data-engineering-476308 and save it locally."),
+        AIMessage(content="", tool_calls=[{"id": "call_1", "name": "extract_file_from_gcp", "args": {"project_id": "data-engineering-476308", "bucket_name": "data_storage_1146", "file_name": "submissions.csv"}}]),
+        ToolMessage(content="Data extracted and saved locally at ./data/submissions.csv", tool_call_id="call_1"),
+        AIMessage(content="Data extraction completed successfully. The file submissions.csv has been saved locally at ./data/submissions.csv.")
+    ]
+    evaluation = basic_evaluator(outputs=result['messages'], reference_outputs=reference_trajectory)
+    print(evaluation)
 
-# Run evaluations
-evaluator = create_trajectory_llm_as_judge(model="openai:gpt-4o-mini")
 
-for request in SCENARIOS:
-    print(f"\n{'='*50}")
-    print(f"Testing: {request}")
-    print('='*50)
-    
-    trajectory = run_workflow_and_get_trajectory(request)
-    result = evaluator(outputs=trajectory)
-    
-    print(f"Score: {result['score']}")
-    print(f"Reasoning: {result['comment']}")
+if __name__ == "__main__":
+    test_extract_data_from_gcp_tool_call()

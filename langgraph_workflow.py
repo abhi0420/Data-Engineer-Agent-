@@ -64,45 +64,42 @@ def conflict_resolver(state: State) -> State:
             relevant_tasks = semantic_search(state['error_details'], state['model_responses'])
         #print("Relevant tasks for conflict resolution : ", relevant_tasks)
         prompt = f"""
-        In a Data Engineering team, you are the Conflict Resolver. Your teammates are :
+        You are a Conflict Resolver in a Data Engineering team. Your teammates are:
 
-        1. Connector Agent : Can connect to GCS source & perform data operations 
-        2. Smart Transformer Agent : Can perform data transformations using pandas based on user instructions.
-        3. BigQuery Agent : Can perform operations on BigQuery based on user instructions.
+        1. Connector Agent : GCS operations (upload, download, delete, list files)
+        2. Smart Transformer Agent : Data transformations using pandas
+        3. BigQuery Agent : BigQuery operations (datasets, tables, queries)
 
-        You will be called when either of these agents encounter conflicts in their operations. 
+        CONTEXT PROVIDED:
+        - User's original request: {state['user_request']}
+        - Tasks completed: {json.dumps(state['tasks_done'], indent=2)}
+        - Failed task: {state['next_task']}
+        - Error: {state['error_details']}
+        - Previous agent responses: {json.dumps(relevant_tasks, indent=2)}
 
-        You are given the main task user requested  : {state['user_request']},
-        Sub_tasks completed successfully : {json.dumps(state['tasks_done'], indent=2)},
-        The Sub_task where the conflict arose : {state['next_task']},
-        Conflict details : {state['error_details']},
-        and relevant previous conversations from these agents : {json.dumps(relevant_tasks, indent=2)}.
+        YOUR ROLE:
+        You can ONLY resolve conflicts using information that exists in the context above.
+        
+        Before providing any parameter value, ask yourself:
+        "Can I point to exactly where this value appears in the user's request, completed tasks, or agent responses?"
+        
+        If YES → Use that exact value
+        If NO → You cannot resolve this conflict. Return END.
 
-        Based on this information, rewrite only the conflictd Sub_task with the necessary corrections that would resolve the conflict. Then call the appropriate agent to handle this corrected task.
-
-        Your response needs to be a dictionary only in the following format:
-
-                {{
+        RESPONSE FORMAT:
+        {{
             "agent" : "agent_name",
             "action" : "task description",
-            "parameters" : {{"param1" : "value1", "param2" : "value2",...}}
+            "parameters" : {{"param1" : "value1", "param2" : "value2"}}
         }}
 
-        Ensure all parameters required for the task are included.
+        If unresolvable:
+        {{"agent" : "END", "action" : "Cannot resolve - [reason]", "parameters" : {{}}}}
 
-        FORMATTING RULES:
-        - Use Python boolean syntax: True/False
-        - Use double quotes for strings
-        - No trailing commas
+        FORMATTING: Use True/False for booleans, double quotes for strings.
         
-        IMPORTANT : In case the user provided info is actually incorrect or insufficient to resolve the conflict, DO NOT MAKE any assumptions. Instead, respond with :
-
-        {{"agent" : "END", "action" : "End the workflow as the conflict could not be resolved", "parameters" : {{}}}}
-
-        NOTE : Do not provide any explanations or additional text.
+        Respond with only the dictionary, no explanations.
         """
-        # Implement conflict resolution based on relevant tasks
-        # For now, just log the relevant tasks
         try:    
             response = model.invoke(prompt)
             print("Conflict Resolver Response : ", response.content)
@@ -131,8 +128,9 @@ def delegator_logic(state: State) -> State:
         state['has_error'] = False  # Reset flag
         return state
     # Taking only top 5 requests and responses to avoid overload
-    print(state)
-    if state['next_agent'] == 'END':
+    #print(state)
+    if state['next_agent'] == 'END' :
+        state['tasks_done'].append({"Delegator": "The task was ended."})
         return state
     prompt = f"""
         In a Data Engineering team, you are the Delegator. Your main task is to understand users request, break it into atomic tasks & call the right tool & assign the appropriate tasks to them. You are provided with the following Agents
@@ -307,13 +305,14 @@ def execute_workflow(user_request):
     state = chain.invoke({"user_request" : user_request, "tasks_done": [{}], "next_agent": "", "next_task": "", "model_responses": [], "has_error": False})
 
     print(state)
+    return state
 
 if __name__ == "__main__":
     user_request = """Read the files wb1.csv & wb2.csv from the bucket data_storage_1146 in project data-engineering-476308, merge them on the common column. Then save the result in a new file. Upload this new file to a new bucket merged_data_storage_1146 with the same filename. Once done,
     - create a big query dataset 'emp_data' in project data-engineering-476308
     """
 
-    execute_workflow(user_request)
+    state = execute_workflow(user_request)
 
 
 
