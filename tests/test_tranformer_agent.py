@@ -1,20 +1,14 @@
-from unittest import result
-from agentevals.trajectory.match import create_trajectory_match_evaluator
-from agents.connector import connector_agent
-from langchain.messages import HumanMessage,AIMessage,ToolMessage, ToolCall
 from agentevals.trajectory.llm import create_trajectory_llm_as_judge
+from agents.data_transformer import smart_transformer_agent
+from langchain.messages import HumanMessage,AIMessage,ToolMessage, ToolCall
 
 
-
-
-strict_evaluator = create_trajectory_match_evaluator(trajectory_match_mode="strict")
-basic_evaluator = create_trajectory_match_evaluator(trajectory_match_mode="unordered")
 llm_evaluator = create_trajectory_llm_as_judge(model="openai:gpt-4o-mini")
 
 def run_workflow_and_get_trajectory(request):
     """Run your workflow and extract the trajectory"""
     
-    result = connector_agent.invoke(
+    result = smart_transformer_agent.invoke(
         {"messages": [{"role": "user", "content": request}]}
     )
     
@@ -45,10 +39,8 @@ def run_workflow_and_get_trajectory(request):
     
     return trajectory
 
-
-
-def test_extract_data_from_gcp():
-    message = "Extract the file submissions.csv from the GCP bucket data_storage_1146 in the project data-engineering-476308 and save it locally."
+def test_data_transformation():
+    message = "Preview ./data/submissions.csv, add a new column 'status' with value 'complete' for all rows, and save to ./data/submissions_transformed.csv"
     trajectory = run_workflow_and_get_trajectory(message)
     test_result = llm_evaluator(outputs=trajectory)
     # print(f"Score: {test_result['score']}")
@@ -56,8 +48,16 @@ def test_extract_data_from_gcp():
     return test_result
 
 
-def test_upload_data_to_gcp():
-    message = "Upload the local file ./data/submissions.csv to the GCP bucket data_storage_1146 in the project data-engineering-476308 as submissions_uploaded.csv. Create the bucket if it does not exist."
+def test_data_preview():
+    message = "Preview the first 10 rows of ./data/submissions.csv"
+    trajectory = run_workflow_and_get_trajectory(message)
+    test_result = llm_evaluator(outputs=trajectory)
+    # print(f"Score: {test_result['score']}")
+    # print(f"Reasoning: {test_result['comment']}")
+    return test_result
+
+def test_unsupported_file_format():
+    message = "Preview the file ./data/submissions.xml"
     trajectory = run_workflow_and_get_trajectory(message)
     test_result = llm_evaluator(outputs=trajectory)
     # print(f"Score: {test_result['score']}")
@@ -67,15 +67,16 @@ def test_upload_data_to_gcp():
 def perform_all_tests():
     test_results = []
 
-    print("Testing Extract Data from GCP Workflow:")
-    test_results.append(test_extract_data_from_gcp())
-    print("\nTesting Upload Data to GCP Workflow:")
-    test_results.append(test_upload_data_to_gcp())
+    print("Testing Data Transformation Workflow:")
+    test_results.append(test_data_transformation())
+    print("\nTesting Data Preview Workflow:")
+    test_results.append(test_data_preview())
+    print("\nTesting Unsupported File Format Workflow:")
+    test_results.append(test_unsupported_file_format())
 
     print("\nSummary of Test Results:")
     for i, result in enumerate(test_results, 1):
-        print(f"Test {i}: Score = {result['score']}, Reasoning = {result['comment']}, Result : {'Pass' if result['score'] is True else 'Fail'}")
-
-
-if __name__ == "__main__":
+        print(f"Test {i}: Score: {result['score']},\n Reasoning: {result['comment']}, \n Result : {'Pass' if result['score'] is True else 'Fail'}")
+        
+if __name__ == "__main__":  
     perform_all_tests()
