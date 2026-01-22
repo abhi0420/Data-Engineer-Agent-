@@ -7,6 +7,7 @@ from dotenv import load_dotenv
 import os
 from google.cloud import bigquery
 import warnings
+from langchain_community.callbacks import get_openai_callback
 
 warnings.filterwarnings("ignore")
 
@@ -201,10 +202,13 @@ Once complete, provide clear status with relevant details.
     )
 
 if __name__ == "__main__":
-    result = bigquery_agent.invoke(
-    {"messages":
-    [{"role": "user",
-    "content": "Create a table 'sales-01' in 'sales_data' dataset with schema [{'name': 'product', 'type': 'STRING'}, {'name': 'quantity', 'type': 'INTEGER'}] in project 'data-engineering-476308' located in 'US'."}]
-    }
-    )
-    print(result)
+    with get_openai_callback() as cb:
+        result = bigquery_agent.invoke(
+        {"messages":
+        [{"role": "user",
+        "content": "Create a table 'sales-01' in 'sales_data' dataset with schema [{'name': 'product', 'type': 'STRING'}, {'name': 'quantity', 'type': 'INTEGER'}] in project 'data-engineering-476308' located in 'US'."}]
+        }
+        )
+        print(result)
+        print("Total Tokens Used in BigQuery Agent: ", cb.total_tokens)
+        print("Total Cost (USD): $", cb.total_cost)

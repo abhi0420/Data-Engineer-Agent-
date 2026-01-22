@@ -7,6 +7,7 @@ from agents.data_transformer import smart_transformer_agent
 from agents.bigquery_assistant import bigquery_agent
 import ast
 from sklearn.feature_extraction.text import TfidfVectorizer
+from langchain_community.callbacks import get_openai_callback
 from sklearn.metrics.pairwise import cosine_similarity
 from dotenv import load_dotenv
 
@@ -311,8 +312,10 @@ if __name__ == "__main__":
     user_request = """Read the files wb1.csv & wb2.csv from the bucket data_storage_1146 in project data-engineering-476308, merge them on the common column. Then save the result in a new file. Upload this new file to a new bucket merged_data_storage_1146 with the same filename. Once done,
     - create a big query dataset 'emp_data' in project data-engineering-476308
     """
-
-    state = execute_workflow(user_request)
+    with get_openai_callback() as cb:
+        state = execute_workflow(user_request)
+        print("Total Tokens Used in Workflow: ", cb.total_tokens)
+        print("Total Cost (USD): $", cb.total_cost)
 
 
 

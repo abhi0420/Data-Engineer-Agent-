@@ -6,6 +6,7 @@ from datetime import datetime
 import os
 import shutil
 from dotenv import load_dotenv
+from langchain_community.callbacks import get_openai_callback
 
 load_dotenv()
 model = ChatOpenAI(model="gpt-4o-mini", temperature=0.2, max_tokens=1000)
@@ -161,13 +162,15 @@ You call: generate_pandas_logic(
 
 if __name__ == "__main__":
 
+    with get_openai_callback() as cb:
+        result = smart_transformer_agent.invoke({
+            "messages": [{
+                "role": "user",
+                "content": """Preview ./data/submissions.csv, 
+                            Save the data in this file as a properly formatted json file"""
+            }]
+        })
 
-    result = smart_transformer_agent.invoke({
-        "messages": [{
-            "role": "user",
-            "content": """Preview ./data/submissions.csv, 
-                        Save the data in this file as a properly formatted json file"""
-        }]
-    })
-
-    print("\nAI Response:", result['messages'][-1].content)
+        print("\nAI Response:", result['messages'][-1].content)
+        print("Total Tokens Used in Data Transformer Agent: ", cb.total_tokens)
+        print("Total Cost (USD): $", cb.total_cost)

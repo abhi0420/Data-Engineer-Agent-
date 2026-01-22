@@ -4,6 +4,7 @@ from langchain_openai import ChatOpenAI
 from agents.data_transformer import smart_transformer_agent
 from agents.connector import connector_agent
 from dotenv import load_dotenv
+from langchain_community.callbacks import get_openai_callback
 
 load_dotenv()
 model = ChatOpenAI(model="gpt-4o-mini", temperature=0.2, max_tokens=1000)
@@ -64,10 +65,13 @@ tools=[call_connector_agent, call_smart_transformer_agent]
 )
 
 if __name__ == "__main__":
-    
-    result = delegator_agent.invoke({
-        "messages": [{
-            "role": "user",
-            "content": """Extract the file submissions.csv from the GCP bucket data_storage_1146 in the project data-engineering-476308 and save it locally in data folder. Then read the file and add a new column 'Status' with values 'Success' when Target is 1 & 'Failure' when Target is 0, then save the result to updated_submissions.csv. Finally, upload the updated_submissions.csv file to to a new GCP bucket processed_data_storage_1146 in the same project."""
-        }]
-    })
+    with get_openai_callback() as cb:
+        result = delegator_agent.invoke({
+            "messages": [{
+                "role": "user",
+                "content": """Extract the file submissions.csv from the GCP bucket data_storage_1146 in the project data-engineering-476308 and save it locally in data folder. Then read the file and add a new column 'Status' with values 'Success' when Target is 1 & 'Failure' when Target is 0, then save the result to updated_submissions.csv. Finally, upload the updated_submissions.csv file to to a new GCP bucket processed_data_storage_1146 in the same project."""
+            }]
+        })
+        print("\nDelegator Agent Response:", result['messages'][-1].content)
+        print("Total Tokens Used in Delegator Agent: ", cb.total_tokens)
+        print("Total Cost (USD): $", cb.total_cost)

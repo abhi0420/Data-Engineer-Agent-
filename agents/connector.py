@@ -2,6 +2,7 @@ from langchain.messages import SystemMessage
 from langchain_openai import ChatOpenAI
 from langchain.agents import create_agent
 from langchain.tools import tool
+from langchain_community.callbacks import get_openai_callback
 from gcs_source import GCPSource
 import time
 import os
@@ -83,12 +84,16 @@ Once complete, provide clear status with relevant details.""",
 if __name__ == "__main__":
     
 
-
-    result = connector_agent.invoke(
-    {"messages":
-    [{"role": "user", 
-    "content": "Extract the file submissions.csv from the GCP bucket data_storage_1146 in the project data-engineering-476308 and save it locally.  "}]}
-)
+    with get_openai_callback() as cb:
+        result = connector_agent.invoke(
+        {"messages":
+        [{"role": "user", 
+        "content": "Extract the file submissions.csv from the GCP bucket data_storage_1146 in the project data-engineering-476308 and save it locally.  "}]}
+    )
+        
+        ai_response = result['messages'][-1].content
+        print("AI Response:", ai_response)
+        print("\nToken Usage:", cb.total_tokens)
+        print("Total Cost (USD): $", cb.total_cost)
     
-    ai_response = result['messages'][-1].content
-    print("AI Response:", ai_response)
+
