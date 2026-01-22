@@ -63,7 +63,7 @@ def test_create_bigquery_table():
     # print(f"Reasoning: {test_result['comment']}")
     return test_result
 
-def insert_data_into_bigquery_table():
+def test_insert_data_into_bigquery_table():
     message = "Insert the following data into the BigQuery table submissions in the dataset test_data: (1, 'Alice', 95.5), (2, 'Bob', 89.0), (3, 'Charlie', 92.0)."
     trajectory = run_workflow_and_get_trajectory(message)
     test_result = llm_evaluator(outputs=trajectory)
