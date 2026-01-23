@@ -5,6 +5,7 @@ from bigquery_source import BigQuerySource
 import time
 from dotenv import load_dotenv
 import os
+import ast
 from google.cloud import bigquery
 import warnings
 from langchain_community.callbacks import get_openai_callback
@@ -86,11 +87,11 @@ def create_partitioned_table(project_id: str, dataset_id: str, table_id: str, sc
     # Convert schema string to list of bigquery.SchemaField
     schema_fields = []
     try:
-        schema_list = eval(schema)  # Expecting schema to be a string representation of a list of dicts
+        schema_list = ast.literal_eval(schema) if isinstance(schema, str) else schema
         for field in schema_list:
             schema_fields.append(bigquery.SchemaField(name=field['name'], field_type=field['type'], mode=field.get('mode', 'NULLABLE')))
-    except Exception as e:
-        return f"ERROR : Invalid schema format. Exception: {str(e)}"
+    except (ValueError, SyntaxError) as e:
+        return f"ERROR : Invalid schema format. Expected list of dicts. Exception: {str(e)}"
     
     result = bq_obj.create_partitioned_table(dataset_id, table_id, schema_fields, partition_field)
     time.sleep(2)  
@@ -116,11 +117,11 @@ def create_bigquery_table(project_id: str, dataset_id: str, table_id: str, schem
     # Convert schema string to list of bigquery.SchemaField
     schema_fields = []
     try:
-        schema_list = eval(schema)  # Expecting schema to be a string representation of a list of dicts
+        schema_list = ast.literal_eval(schema) if isinstance(schema, str) else schema
         for field in schema_list:
             schema_fields.append(bigquery.SchemaField(name=field['name'], field_type=field['type'], mode=field.get('mode', 'NULLABLE')))
-    except Exception as e:
-        return f"ERROR : Invalid schema format. Exception: {str(e)}"
+    except (ValueError, SyntaxError) as e:
+        return f"ERROR : Invalid schema format. Expected list of dicts. Exception: {str(e)}"
     
     result = bq_obj.create_table(dataset_id, table_id, schema_fields)
     time.sleep(2)  
@@ -148,11 +149,11 @@ def load_table_from_gcs(project_id: str, dataset_id: str, table_id: str, source_
     # Convert schema string to list of bigquery.SchemaField
     schema_fields = []
     try:
-        schema_list = eval(schema)  # Expecting schema to be a string representation of a list of dicts
+        schema_list = ast.literal_eval(schema) if isinstance(schema, str) else schema
         for field in schema_list:
             schema_fields.append(bigquery.SchemaField(name=field['name'], field_type=field['type'], mode=field.get('mode', 'NULLABLE')))
-    except Exception as e:
-        return f"ERROR : Invalid schema format. Exception: {str(e)}"
+    except (ValueError, SyntaxError) as e:
+        return f"ERROR : Invalid schema format. Expected list of dicts. Exception: {str(e)}"
     
     result = bq_obj.load_data_from_gcs(dataset_id, table_id, source_uri, file_format, 1, schema_fields)
     time.sleep(2)  
@@ -175,9 +176,9 @@ def insert_rows_into_bigquery(project_id: str, dataset_id: str, table_id: str, r
     
     # Convert rows string to list of dicts
     try:
-        rows_list = eval(rows)  # Expecting rows to be a string representation of a list of dicts
-    except Exception as e:
-        return f"ERROR : Invalid rows format. Exception: {str(e)}"
+        rows_list = ast.literal_eval(rows) if isinstance(rows, str) else rows
+    except (ValueError, SyntaxError) as e:
+        return f"ERROR : Invalid rows format. Expected list of dicts. Exception: {str(e)}"
     
     result = bq_obj.insert_rows(dataset_id, table_id, rows_list)
     time.sleep(2)  
