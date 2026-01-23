@@ -6,15 +6,15 @@ A multi-agent AI system that automates data engineering tasks using LangGraph or
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│                              User Request                                    │
+│                              User Request                                   │
 └─────────────────────────────────────────────────────────────────────────────┘
                                       │
                                       ▼
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│                           DELEGATOR LOGIC                                    │
-│   • Parses user request into atomic tasks                                   │
-│   • Routes to appropriate agent                                             │
-│   • Tracks completed tasks                                                  │
+│                           DELEGATOR LOGIC                                   │
+│           • Parses user request into atomic tasks                           │
+│           • Routes to appropriate agent                                     │
+│           • Tracks completed tasks                                          │
 └─────────────────────────────────────────────────────────────────────────────┘
                                       │
                     ┌─────────────────┼─────────────────┐
