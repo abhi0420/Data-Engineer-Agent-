@@ -24,7 +24,11 @@ def generate_pandas_logic(instructions: str, input_filename: str, output_filenam
     
     try:
         if not os.path.exists(input_filename):
-            return f"ERROR : File {input_filename} does not exist."
+            return f"""ERROR: File Not Found
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+❌ File '{input_filename}' does not exist.
+💡 Tip: Check if the file is in the ./data/ folder.
+"""
         
         print(f"Input: {input_filename}")
         print(f"Output: {output_filename}")
@@ -74,14 +78,23 @@ Generate the code:
         code_lower = generated_code.lower()
         for keyword in forbidden_keywords:
             if keyword in code_lower:
-                return f"Error: Forbidden operation: '{keyword}'"
+                return f"""ERROR: Security Violation
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+❌ Forbidden operation detected: '{keyword}'
+🔒 This operation is not allowed for security reasons.
+"""
         
         # Execute
         namespace = {'df': None, 'pd': pd, 'datetime': datetime}
         try:
             exec(generated_code, namespace)
         except Exception as e:
-            return f"Error executing code: {str(e)}\n\nCode:\n{generated_code}"
+            return f"""ERROR: Code Execution Failed
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+❌ {str(e)}
+📝 Generated code:
+{generated_code}
+"""
 
         # Backup original
         backup_dir = "./backups"
@@ -90,10 +103,19 @@ Generate the code:
         backup_path = os.path.join(backup_dir, f"{timestamp}_{os.path.basename(input_filename)}")
         shutil.copy2(input_filename, backup_path)
 
-        return f"Success! Transformed data saved to: {output_filename}\nOriginal backed up to: {backup_path}"
+        return f"""✅ Transformation Complete
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+📥 Input: {input_filename}
+📤 Output: {output_filename}
+💾 Backup: {backup_path}
+🔄 Applied: {instructions[:50]}{'...' if len(instructions) > 50 else ''}
+"""
     
     except Exception as e:
-        return f"ERROR: {str(e)}"
+        return f"""ERROR: Transformation Failed
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+❌ {str(e)}
+"""
 
 
 @tool
@@ -101,7 +123,10 @@ def preview_data(filename: str, num_rows: int = 5) -> str:
     """Preview the first few rows of a data file."""
     try:
         if not os.path.exists(filename):
-            return f"ERROR : File {filename} does not exist."
+            return f"""ERROR: File Not Found
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+❌ File '{filename}' does not exist.
+"""
         
         file_ext = os.path.splitext(filename)[1].lower()
 
@@ -112,20 +137,28 @@ def preview_data(filename: str, num_rows: int = 5) -> str:
         elif file_ext == ".json":
             df = pd.read_json(filename)
         else:
-            return f"ERROR : Unsupported file format: {file_ext}"
+            return f"""ERROR: Unsupported Format
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+❌ File format '{file_ext}' is not supported.
+💡 Supported: .csv, .xls, .xlsx, .json
+"""
 
         preview = df.head(num_rows).to_string()
 
-        return f"""
-File: {filename}
-Rows: {len(df)}
-Columns: {list(df.columns)}
+        return f"""📊 Data Preview
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+📁 File: {filename}
+📏 Total Rows: {len(df)}
+📋 Columns: {', '.join(df.columns.tolist())}
 
-Preview (first {num_rows} rows):
+🔍 First {num_rows} rows:
 {preview}
 """
     except Exception as e:
-        return f"ERROR: {str(e)}"
+        return f"""ERROR: Preview Failed
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+❌ {str(e)}
+"""
 smart_transformer_agent = create_agent(
         model=model,
         system_prompt="""You are a smart data transformer agent.

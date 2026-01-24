@@ -58,7 +58,8 @@ def conflict_resolver(state: State) -> State:
     latest_model_response = state['model_responses'][-1] if state['model_responses'] else ""
     error_details = state.get('error_details', "")
     if latest_model_response or error_details:
-        print("Resolving conflict : {}".format(state['error_details']))
+        
+        print("\n\n Resolving conflict : {}".format(state['error_details']))
         if len(state['model_responses']) == 0:
             relevant_tasks = []
         else:
@@ -79,19 +80,17 @@ def conflict_resolver(state: State) -> State:
         - Previous agent responses: {json.dumps(relevant_tasks, indent=2)}
 
         YOUR ROLE:
-        You can ONLY resolve conflicts using information that exists in the context above.
+        Analyze the error and fix the failed task. The failed task already contains some parameters - preserve them and add/fix only what's needed.
         
-        Before providing any parameter value, ask yourself:
-        "Can I point to exactly where this value appears in the user's request, completed tasks, or agent responses?"
+        CRITICAL: Your response must include ALL parameters needed for the task, not just the missing ones. 
         
-        If YES → Use that exact value
-        If NO → You cannot resolve this conflict. Return END.
+        Before providing a response, think if it is correct, don't give fake/placeholder values. If you cannot find a required value in the context, return END.
 
         RESPONSE FORMAT:
         {{
             "agent" : "agent_name",
             "action" : "task description",
-            "parameters" : {{"param1" : "value1", "param2" : "value2"}}
+            "parameters" : {{"param1" : "value1", "param2" : "value2", ...}}  
         }}
 
         If unresolvable:
@@ -99,7 +98,7 @@ def conflict_resolver(state: State) -> State:
 
         FORMATTING: Use True/False for booleans, double quotes for strings.
         
-        Respond with only the dictionary, no explanations.
+        Respond with only clean dictionary, no explanations.
         """
         try:    
             response = model.invoke(prompt)
@@ -111,7 +110,7 @@ def conflict_resolver(state: State) -> State:
             # Parse structured format
             state['next_agent'] = response_content.get('agent', 'END')
             state['next_task'] = response_content.get('action', '') + " with parameters " + str(response_content.get('parameters', {}))
-            print(f"Conflict Resolver recommends {state['next_agent']} - Action: {response_content.get('action')}")
+            print(f"\n \n Conflict Resolver recommends {state['next_agent']} - Action: {response_content.get('action')}")
             state['has_error'] = False
             state['error_details'] = ""
         except Exception as e:
@@ -222,6 +221,7 @@ def delegator_logic(state: State) -> State:
 def call_smart_transformer_agent(state : State) -> State:
     """Calls the smart transformer agent to handle data transformation tasks."""
     task = state['next_task']
+    print(" \n ---------------------------------------------------- \n")
     print("Calling Smart Transformer Agent to handle the task : ", task)
     response = smart_transformer_agent.invoke(
         {"messages": [{"role": "user", "content": task}]}
@@ -239,6 +239,7 @@ def call_smart_transformer_agent(state : State) -> State:
 def call_connector_agent(state : State) -> State:
     """Calls the connector agent to handle data connection tasks."""
     task = state['next_task']
+    print(" \n ------------------------------------------------------ \n")
     print("Calling Connector Agent to handle the task : ", task)
     response = connector_agent.invoke(
         {"messages": [{"role": "user", "content": task}]}
@@ -309,11 +310,13 @@ def execute_workflow(user_request):
     return state
 
 if __name__ == "__main__":
-    user_request = """Read the files wb1.csv & wb2.csv from the bucket data_storage_1146 in project data-engineering-476308, merge them on the common column. Then save the result in a new file. Upload this new file to a new bucket merged_data_storage_1146 with the same filename. Once done,
-    - create a big query dataset 'emp_data' in project data-engineering-476308
+    user_request = """Read the files wb1.csv & wb2.csv from the bucket data_storage_1146 in project data-engineering-476308, merge them on the common column. Then save the result in a new file. Upload this new file to a new bucket merged_data_storage_1146 with the same filename.
     """
     with get_openai_callback() as cb:
-        state = execute_workflow(user_request)
+        try:
+            state = execute_workflow(user_request)
+        except Exception as e:
+            print("An error occurred during workflow execution:", e)
         print("Total Tokens Used in Workflow: ", cb.total_tokens)
         print("Total Cost (USD): $", cb.total_cost)
 

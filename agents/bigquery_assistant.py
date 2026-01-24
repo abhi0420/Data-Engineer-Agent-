@@ -31,11 +31,21 @@ def execute_bigquery_query(project_id: str, query: str) -> str:
     try:
         df = bq_obj.query(query)
         result_str = df.to_string(index=False)
+        row_count = len(df)
     except Exception as e:
-        return f"ERROR : Failed to execute query. Exception: {str(e)}"
+        return f"""ERROR: Query Execution Failed
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+❌ {str(e)}
+📝 Query: {query[:100]}{'...' if len(query) > 100 else ''}
+"""
     
     time.sleep(2)  
-    return f"Query executed successfully. Results:\n{result_str}"
+    return f"""✅ Query Executed Successfully
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+📊 Rows returned: {row_count}
+📋 Results:
+{result_str}
+"""
 
 @tool
 def create_bigquery_dataset(project_id: str, dataset_id: str, location: str = "US") -> str:
@@ -53,8 +63,20 @@ def create_bigquery_dataset(project_id: str, dataset_id: str, location: str = "U
     print("BigQuery Client Initialized.")
     
     result = bq_obj.create_dataset(dataset_id, location)
-    time.sleep(2)  
-    return result
+    time.sleep(2)
+    
+    if "ERROR" in result.upper() or "error" in result.lower():
+        return f"""ERROR: Dataset Creation Failed
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+❌ {result}
+"""
+    
+    return f"""✅ Dataset Created Successfully
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+📁 Dataset: {dataset_id}
+🌍 Location: {location}
+🔗 Project: {project_id}
+"""
 
 @tool
 def create_view(project_id: str, dataset_id: str, view_id: str, query: str) -> str:
@@ -65,8 +87,20 @@ def create_view(project_id: str, dataset_id: str, view_id: str, query: str) -> s
     print("BigQuery Client Initialized.")
     
     result = bq_obj.create_view(dataset_id, view_id, query)
-    time.sleep(2)  
-    return result
+    time.sleep(2)
+    
+    if "ERROR" in str(result).upper():
+        return f"""ERROR: View Creation Failed
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+❌ {result}
+"""
+    
+    return f"""✅ View Created Successfully
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+👁️ View: {view_id}
+📁 Dataset: {dataset_id}
+🔗 Project: {project_id}
+"""
 
 @tool
 def create_partitioned_table(project_id: str, dataset_id: str, table_id: str, schema: str, partition_field: str) -> str:
@@ -94,8 +128,21 @@ def create_partitioned_table(project_id: str, dataset_id: str, table_id: str, sc
         return f"ERROR : Invalid schema format. Expected list of dicts. Exception: {str(e)}"
     
     result = bq_obj.create_partitioned_table(dataset_id, table_id, schema_fields, partition_field)
-    time.sleep(2)  
-    return result
+    time.sleep(2)
+    
+    if "ERROR" in str(result).upper():
+        return f"""ERROR: Partitioned Table Creation Failed
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+❌ {result}
+"""
+    
+    return f"""✅ Partitioned Table Created Successfully
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+📊 Table: {table_id}
+📁 Dataset: {dataset_id}
+📅 Partition Field: {partition_field}
+🔗 Project: {project_id}
+"""
 
 
 
@@ -124,8 +171,21 @@ def create_bigquery_table(project_id: str, dataset_id: str, table_id: str, schem
         return f"ERROR : Invalid schema format. Expected list of dicts. Exception: {str(e)}"
     
     result = bq_obj.create_table(dataset_id, table_id, schema_fields)
-    time.sleep(2)  
-    return result
+    time.sleep(2)
+    
+    if "ERROR" in str(result).upper():
+        return f"""ERROR: Table Creation Failed
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+❌ {result}
+"""
+    
+    return f"""✅ Table Created Successfully
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+📊 Table: {table_id}
+📁 Dataset: {dataset_id}
+🔗 Project: {project_id}
+📋 Schema: {len(schema_fields)} columns
+"""
 
 @tool
 def load_table_from_gcs(project_id: str, dataset_id: str, table_id: str, source_uri: str, schema: str, file_format: str = "CSV") -> str:
@@ -156,8 +216,21 @@ def load_table_from_gcs(project_id: str, dataset_id: str, table_id: str, source_
         return f"ERROR : Invalid schema format. Expected list of dicts. Exception: {str(e)}"
     
     result = bq_obj.load_data_from_gcs(dataset_id, table_id, source_uri, file_format, 1, schema_fields)
-    time.sleep(2)  
-    return result
+    time.sleep(2)
+    
+    if "ERROR" in str(result).upper():
+        return f"""ERROR: Data Load Failed
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+❌ {result}
+"""
+    
+    return f"""✅ Data Loaded Successfully
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+📊 Table: {dataset_id}.{table_id}
+📦 Source: {source_uri}
+📄 Format: {file_format}
+🔗 Project: {project_id}
+"""
 
 @tool
 def insert_rows_into_bigquery(project_id: str, dataset_id: str, table_id: str, rows: str) -> str:
@@ -181,8 +254,20 @@ def insert_rows_into_bigquery(project_id: str, dataset_id: str, table_id: str, r
         return f"ERROR : Invalid rows format. Expected list of dicts. Exception: {str(e)}"
     
     result = bq_obj.insert_rows(dataset_id, table_id, rows_list)
-    time.sleep(2)  
-    return result
+    time.sleep(2)
+    
+    if "ERROR" in str(result).upper():
+        return f"""ERROR: Row Insertion Failed
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+❌ {result}
+"""
+    
+    return f"""✅ Rows Inserted Successfully
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+📊 Table: {dataset_id}.{table_id}
+📝 Rows inserted: {len(rows_list)}
+🔗 Project: {project_id}
+"""
 
 
 bigquery_agent = create_agent(

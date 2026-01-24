@@ -21,16 +21,27 @@ def extract_data_from_gcp(project_id : str, bucket_name : str, filename : str) -
 
     bucket_exists = gcp_obj.bucket_exists()
     if not bucket_exists:
-        return f"ERROR : Bucket {bucket_name} does not exist in project {project_id}."
+        return f"""ERROR: Bucket Not Found
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+❌ Bucket '{bucket_name}' does not exist in project '{project_id}'.
+"""
 
     file_present = gcp_obj.file_exists(filename)
 
     if file_present:
         data_path = gcp_obj.download_file(filename)
     else:
-        return f"ERROR : File {filename} does not exist in bucket {bucket_name}."
+        return f"""ERROR: File Not Found
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+❌ File '{filename}' does not exist in bucket '{bucket_name}'.
+"""
     time.sleep(2)  
-    return f"Data extracted and saved to {data_path}"
+    return f"""✅ Download Complete
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+📁 File: {filename}
+📦 Source: gs://{bucket_name}/{filename}
+💾 Saved to: {data_path}
+"""
 
 
 
@@ -51,10 +62,17 @@ def load_data_to_gcp(project_id: str, bucket_name: str,  source_file_path: str, 
             print(f"Bucket {bucket_name} does not exist. Creating new bucket in project {project_id}.")
             gcp_obj = GCPSource.create_bucket(project_id, bucket_name)
             if not gcp_obj:
-                return f"ERROR :Failed to create bucket {bucket_name} in project {project_id}."
+                return f"""ERROR: Bucket Creation Failed
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+❌ Failed to create bucket '{bucket_name}' in project '{project_id}'.
+"""
             print(f"Bucket {bucket_name} created in project {project_id}.")
         else:
-            return f"ERROR : Bucket {bucket_name} does not exist in project {project_id}."
+            return f"""ERROR: Bucket Not Found
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+❌ Bucket '{bucket_name}' does not exist in project '{project_id}'.
+💡 Tip: Set create_new_bucket=True to create it.
+"""
     else:
         print("Connected to existing GCP bucket.")
     print(f"Proceeding to upload file {source_file_path} as {dest_blob_name}")
@@ -62,22 +80,29 @@ def load_data_to_gcp(project_id: str, bucket_name: str,  source_file_path: str, 
     upload_status = gcp_obj.upload_file(source_file_path, dest_blob_name)
     time.sleep(2)  
     if "ERROR" in upload_status:
-        return "ERROR : Upload failed : " + upload_status
+        return f"""ERROR: Upload Failed
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+❌ {upload_status}
+"""
     print("Upload operation completed.")
-    return f"Data uploaded to {upload_status}"
+    return f"""✅ Upload Complete
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+📁 File: {dest_blob_name}
+📦 Destination: gs://{bucket_name}/{dest_blob_name}
+📍 Source: {source_file_path}
+"""
 
 
 
 connector_agent = create_agent(
         model=model,
-        system_prompt="""You are a connector agent. You can connect to GCS source to perform data operations.
+        system_prompt="""You are a connector agent for GCS (Google Cloud Storage) operations.
 
-Examine the user's request, understand what needs to be done and extract the required parameters from the task description. Read tool docstrings for param details.
+Your job is to extract parameters from the task description and call the appropriate tool. Each tool has a docstring that describes its required and optional parameters - read them carefully.
 
-If critical information is missing and cannot be inferred, respond starting with "ERROR:" - this exact word is required for proper routing.
+If critical information is missing and cannot be inferred from the task, respond starting with "ERROR:" and clearly state what information is needed.
 
-Use the appropriate tools to complete the operation. Report any tool errors back starting with ERROR.
-Once complete, provide clear status with relevant details.""",
+Report any tool errors back starting with ERROR.""",
         tools=[extract_data_from_gcp, load_data_to_gcp]
          )
 
