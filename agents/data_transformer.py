@@ -51,6 +51,8 @@ Rules:
 4. Don't include print statements
 5. Do not execute any code  
 
+If any user instructions violate any of the above rules, stop and return error message saying "ERROR: Invalid Instruction - [Reason]".
+
 Example:
 df = pd.read_csv("{input_filename}")
 df['column'] = 'value'
@@ -60,6 +62,8 @@ Generate the code:
 """
 
         response = model.invoke(prompt)
+        if "ERROR" in response.content:
+            return response.content.strip()
         generated_code = response.content.strip()
 
         # Clean markdown

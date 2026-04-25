@@ -1,6 +1,7 @@
 from typing_extensions import TypedDict, List
 from langgraph.graph import START, END, StateGraph
 from langchain_openai import ChatOpenAI
+from langchain_community.callbacks import get_openai_callback
 import json
 from agents.connector import connector_agent
 from agents.data_transformer import smart_transformer_agent
@@ -25,6 +26,7 @@ class State(TypedDict):
     has_error : bool
     error_details : str
     current_error: str
+    retry_count : int
 
 def semantic_search(query: str, model_responses: List[dict], top_k: int = 2):
     print("Performing semantic search for resolving conflict : ", query)
@@ -58,66 +60,77 @@ def conflict_resolver(state: State) -> State:
     latest_model_response = state['model_responses'][-1] if state['model_responses'] else ""
     error_details = state.get('error_details', "")
     if latest_model_response or error_details:
-        
-        print("\n\n Resolving conflict : {}".format(state['error_details']))
-        if len(state['model_responses']) == 0:
-            relevant_tasks = []
-        else:
-            relevant_tasks = semantic_search(state['error_details'], state['model_responses'])
-        #print("Relevant tasks for conflict resolution : ", relevant_tasks)
-        prompt = f"""
-        You are a Conflict Resolver in a Data Engineering team. Your teammates are:
+        if state["retry_count"] < 3:
+            state["retry_count"] += 1
+            print("\n\n Resolving conflict : {}".format(state['error_details']))
+            if len(state['model_responses']) == 0:
+                relevant_tasks = []
+                
+            else:
+                relevant_tasks = semantic_search(state['error_details'], state['model_responses'])
+            #print("Relevant tasks for conflict resolution : ", relevant_tasks)
+            prompt = f"""
+            You are a Conflict Resolver in a Data Engineering team. Your teammates are:
 
-        1. Connector Agent : GCS operations (upload, download, delete, list files)
-        2. Smart Transformer Agent : Data transformations using pandas
-        3. BigQuery Agent : BigQuery operations (datasets, tables, queries)
+            1. Connector Agent : GCS operations (upload, download, delete, list files)
+            2. Smart Transformer Agent : Data transformations using pandas
+            3. BigQuery Agent : BigQuery operations (datasets, tables, queries)
 
-        CONTEXT PROVIDED:
-        - User's original request: {state['user_request']}
-        - Tasks completed: {json.dumps(state['tasks_done'], indent=2)}
-        - Failed task: {state['next_task']}
-        - Error: {state['error_details']}
-        - Previous agent responses: {json.dumps(relevant_tasks, indent=2)}
+            CONTEXT PROVIDED:
+            - User's original request: {state['user_request']}
+            - Tasks completed: {json.dumps(state['tasks_done'], indent=2)}
+            - Failed task: {state['next_task']}
+            - Error: {state['error_details']}
+            - Previous agent responses: {json.dumps(relevant_tasks, indent=2)}
 
-        YOUR ROLE:
-        Analyze the error and fix the failed task. The failed task already contains some parameters - preserve them and add/fix only what's needed.
-        
-        CRITICAL: Your response must include ALL parameters needed for the task, not just the missing ones. 
-        
-        Before providing a response, think if it is correct, don't give fake/placeholder values. If you cannot find a required value in the context, return END.
-
-        RESPONSE FORMAT:
-        {{
-            "agent" : "agent_name",
-            "action" : "task description",
-            "parameters" : {{"param1" : "value1", "param2" : "value2", ...}}  
-        }}
-
-        If unresolvable:
-        {{"agent" : "END", "action" : "Cannot resolve - [reason]", "parameters" : {{}}}}
-
-        FORMATTING: Use True/False for booleans, double quotes for strings.
-        
-        Respond with only clean dictionary, no explanations.
-        """
-        try:    
-            response = model.invoke(prompt)
-            print("Conflict Resolver Response : ", response.content)
-            response_content = response.content
-            if isinstance(response_content, str):
-                response_content = ast.literal_eval(response_content)
+            YOUR ROLE:
+            Analyze the error and fix the failed task. The failed task already contains some parameters - preserve them and add/fix only what's needed.
             
-            # Parse structured format
-            state['next_agent'] = response_content.get('agent', 'END')
-            state['next_task'] = response_content.get('action', '') + " with parameters " + str(response_content.get('parameters', {}))
-            print(f"\n \n Conflict Resolver recommends {state['next_agent']} - Action: {response_content.get('action')}")
-            state['has_error'] = False
-            state['error_details'] = ""
-        except Exception as e:
-            print("Conflict Resolver encountered an error: ", str(e))
-            state['next_agent'] = 'END'
-            state['next_task'] = 'End the workflow as the conflict could not be resolved'
+            CRITICAL: Your response must include ALL parameters needed for the task, not just the missing ones. 
+            
+            Before providing a response, think if it is correct, don't give fake/placeholder values. If you cannot find a required value in the context, return END.
+
+            RESPONSE FORMAT:
+            {{
+                "agent" : "agent_name",
+                "action" : "task description",
+                "parameters" : {{"param1" : "value1", "param2" : "value2", ...}}  
+            }}
+
+            If unresolvable:
+            {{"agent" : "END", "action" : "Cannot resolve - [reason]", "parameters" : {{}}}}
+
+            FORMATTING: Use True/False for booleans, double quotes for strings.
+            
+            Respond with only clean dictionary, no explanations.
+            """
+            try:    
+                response = model.invoke(prompt)
+                print("Conflict Resolver Response : ", response.content)
+                response_content = response.content
+                if isinstance(response_content, str):
+                    response_content = ast.literal_eval(response_content)
+                
+                # Parse structured format
+                state['next_agent'] = response_content.get('agent', 'END')
+                state['next_task'] = response_content.get('action', '') + " with parameters " + str(response_content.get('parameters', {}))
+                print(f"\n \n Conflict Resolver recommends {state['next_agent']} - Action: {response_content.get('action')}")
+                state['has_error'] = False
+                state['error_details'] = ""
+                state['retry_count'] = 0
+            except Exception as e:
+                print("Conflict Resolver encountered an error: ", str(e))
+                state['next_agent'] = 'END'
+                state['next_task'] = 'End the workflow as the conflict could not be resolved'
+        else:
+
+            state["next_agent"] = 'END'
+            state["next_task"] = 'End the workflow as max retries reached'
     return state
+
+
+
+
 
 def delegator_logic(state: State) -> State:
     user_request = state['user_request']
@@ -159,7 +172,7 @@ def delegator_logic(state: State) -> State:
         - Query data
         - Load data from GCS into BigQuery tables
 
-        4. conflict_resolver Tool : Helps resolve any conflicts that arise during the execution of tasks by other agents. Call this tool when an error occurs. 
+        Conflict_resolver Node : Helps resolve any conflicts that arise during the execution of tasks by other agents. Call this tool when an error occurs. 
 
 
         This is the user's request: {user_request}
@@ -304,7 +317,7 @@ def execute_workflow(user_request):
 
     chain = workflow.compile()
 
-    state = chain.invoke({"user_request" : user_request, "tasks_done": [{}], "next_agent": "", "next_task": "", "model_responses": [], "has_error": False})
+    state = chain.invoke({"user_request" : user_request, "tasks_done": [{}], "next_agent": "", "next_task": "", "model_responses": [], "has_error": False, "retry_count": 0})
 
     print(state)
     return state

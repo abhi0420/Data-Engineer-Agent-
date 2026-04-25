@@ -104,6 +104,7 @@ class BigQuerySource:
             return f"ERROR : Failed to delete table {table_id} in dataset {dataset_id} . Exception: {str(e)}"
         return f"Table {table_id} deleted from dataset {dataset_id}."
     
+    
     def get_schema_of_df(self, df : pd.DataFrame) -> List[bigquery.SchemaField]:
         schema = []
         mapping = {

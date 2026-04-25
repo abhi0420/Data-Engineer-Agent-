@@ -15,18 +15,15 @@ class GCPSource:
         self.bucket = self.client.bucket(self.bucket_name)
 
     @classmethod
-    def create_bucket(cls, project_id: str, bucket_name: str, location: str = "US", storage_class="STANDARD") -> str:
+    def create_bucket(cls, project_id: str, bucket_name: str, location: str = "US", storage_class="STANDARD") -> "GCPSource":
         creds = service_account.Credentials.from_service_account_file(path_to_gcs_service_account)
         client = storage.Client(credentials=creds, project=project_id)
         bucket = storage.Bucket(client, name=bucket_name)
         if bucket.exists():
-            return cls(None, None)
+            return cls(project_id, bucket_name)
         bucket.location = location
         bucket.storage_class = storage_class
-        try:
-            new_bucket = client.create_bucket(bucket)
-        except Exception as e:
-            return f"ERROR : Failed to create bucket {bucket_name} . Exception: {str(e)}"
+        new_bucket = client.create_bucket(bucket)
         return cls(project_id, new_bucket.name)
 
     def list_blobs(self, prefix: str = "") -> list[str]:

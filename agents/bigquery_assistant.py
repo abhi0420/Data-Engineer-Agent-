@@ -269,6 +269,32 @@ def insert_rows_into_bigquery(project_id: str, dataset_id: str, table_id: str, r
 🔗 Project: {project_id}
 """
 
+def delete_bigquery_table(project_id: str, dataset_id: str, table_id: str) -> str:
+    """Deletes a BigQuery table.
+    
+    Required parameters:
+        - project_id: The GCP project ID
+        - dataset_id: The dataset containing the table
+        - table_id: The name of the table to delete
+    """
+    
+    bq_obj = BigQuerySource(project_id)
+    print("BigQuery Client Initialized.")
+    
+    result = bq_obj.delete_table(dataset_id, table_id)
+    time.sleep(2)
+    
+    if "ERROR" in str(result).upper():
+        return f"""ERROR: Table Deletion Failed
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+❌ {result}
+"""
+    
+    return f"""✅ Table Deleted Successfully
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+📊 Table: {dataset_id}.{table_id}
+🔗 Project: {project_id}
+"""
 
 bigquery_agent = create_agent(
         model=model,
