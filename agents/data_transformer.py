@@ -1,3 +1,5 @@
+import mlflow
+
 from langchain_openai import ChatOpenAI
 from langchain.agents import create_agent
 from langchain.tools import tool
@@ -11,6 +13,11 @@ from langchain_community.callbacks import get_openai_callback
 load_dotenv()
 model = ChatOpenAI(model="gpt-4o-mini", temperature=0.2, max_tokens=1000)
 
+mlflow.langchain.autolog()
+mlflow.set_tracking_uri("http://localhost:5001")
+mlflow.set_experiment("Data Engineer Agent Workflow")
+
+
 @tool
 def generate_pandas_logic(instructions: str, input_filename: str, output_filename: str) -> str:
     """
@@ -22,6 +29,18 @@ def generate_pandas_logic(instructions: str, input_filename: str, output_filenam
         output_filename: Path where transformed data should be saved
     """
     
+    with mlflow.start_run(run_name="generate_pandas_logic", nested=True):
+        mlflow.log_params({
+            "input_filename": input_filename,
+            "output_filename": output_filename,
+            "instructions": instructions[:250],
+        })
+        result = _generate_pandas_logic_inner(instructions, input_filename, output_filename)
+        mlflow.log_param("status", "ERROR" if result.startswith("ERROR") else "SUCCESS")
+        return result
+
+
+def _generate_pandas_logic_inner(instructions: str, input_filename: str, output_filename: str) -> str:
     try:
         if not os.path.exists(input_filename):
             return f"""ERROR: File Not Found
@@ -29,7 +48,7 @@ def generate_pandas_logic(instructions: str, input_filename: str, output_filenam
 ❌ File '{input_filename}' does not exist.
 💡 Tip: Check if the file is in the ./data/ folder.
 """
-        
+
         print(f"Input: {input_filename}")
         print(f"Output: {output_filename}")
         print(f"Instructions: {instructions}")
@@ -91,6 +110,7 @@ Generate the code:
         # Execute
         namespace = {'df': None, 'pd': pd, 'datetime': datetime}
         try:
+
             exec(generated_code, namespace)
         except Exception as e:
             return f"""ERROR: Code Execution Failed
@@ -106,6 +126,11 @@ Generate the code:
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         backup_path = os.path.join(backup_dir, f"{timestamp}_{os.path.basename(input_filename)}")
         shutil.copy2(input_filename, backup_path)
+
+        # Log output row count if available
+        output_df = namespace.get('df')
+        if output_df is not None and hasattr(output_df, '__len__'):
+            mlflow.log_metric("output_row_count", len(output_df))
 
         return f"""✅ Transformation Complete
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

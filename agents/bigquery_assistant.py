@@ -268,7 +268,7 @@ def insert_rows_into_bigquery(project_id: str, dataset_id: str, table_id: str, r
 📝 Rows inserted: {len(rows_list)}
 🔗 Project: {project_id}
 """
-
+@tool
 def delete_bigquery_table(project_id: str, dataset_id: str, table_id: str) -> str:
     """Deletes a BigQuery table.
     

@@ -1,3 +1,6 @@
+import mlflow
+
+
 from typing_extensions import TypedDict, List
 from langgraph.graph import START, END, StateGraph
 from langchain_openai import ChatOpenAI
@@ -14,6 +17,12 @@ from dotenv import load_dotenv
 
 # Load environment variables
 load_dotenv()
+
+mlflow.langchain.autolog()
+
+mlflow.set_tracking_uri("http://localhost:5001")
+mlflow.set_experiment("Data Engineer Agent Workflow")
+
 
 model = ChatOpenAI(model="gpt-4o-mini", temperature=0.2, max_tokens=1000)
 
@@ -62,6 +71,8 @@ def conflict_resolver(state: State) -> State:
     if latest_model_response or error_details:
         if state["retry_count"] < 3:
             state["retry_count"] += 1
+            mlflow.set_tag("error_details", state["error_details"][:200])
+            mlflow.log_metric("retry_count", state["retry_count"])
             print("\n\n Resolving conflict : {}".format(state['error_details']))
             if len(state['model_responses']) == 0:
                 relevant_tasks = []
@@ -115,6 +126,8 @@ def conflict_resolver(state: State) -> State:
                 state['next_agent'] = response_content.get('agent', 'END')
                 state['next_task'] = response_content.get('action', '') + " with parameters " + str(response_content.get('parameters', {}))
                 print(f"\n \n Conflict Resolver recommends {state['next_agent']} - Action: {response_content.get('action')}")
+                mlflow.set_tag("recommended_agent", state['next_agent'])
+                mlflow.set_tag("recommended_action", response_content.get('action', ''))
                 state['has_error'] = False
                 state['error_details'] = ""
                 state['retry_count'] = 0
@@ -228,6 +241,8 @@ def delegator_logic(state: State) -> State:
     params = response_content.get('parameters', {})
     state['next_task'] = next_task + " with parameters " + str(params)
     state['next_agent'] = next_agent
+    mlflow.set_tag("delegator_next_agent", next_agent)
+    mlflow.log_metric("delegated_tasks_count", len(state.get('tasks_done', [])))
     return state
 
 
@@ -288,41 +303,45 @@ def call_bigquery_agent(state : State) -> State:
     return state
 
 def execute_workflow(user_request):
-    workflow = StateGraph(State)
+    with mlflow.start_run(run_name="execute_workflow") as run:
+        mlflow.log_param("user_request", user_request[:250])
+        workflow = StateGraph(State)
 
-    workflow.add_node("delegator_logic", delegator_logic)
-    workflow.add_node("call_connector_agent", call_connector_agent)
-    workflow.add_node("call_smart_transformer_agent", call_smart_transformer_agent)
-    workflow.add_node("conflict_resolver", conflict_resolver) 
-    workflow.add_node("call_bigquery_agent", call_bigquery_agent)   
-    workflow.add_edge(START, "delegator_logic")
+        workflow.add_node("delegator_logic", delegator_logic)
+        workflow.add_node("call_connector_agent", call_connector_agent)
+        workflow.add_node("call_smart_transformer_agent", call_smart_transformer_agent)
+        workflow.add_node("conflict_resolver", conflict_resolver) 
+        workflow.add_node("call_bigquery_agent", call_bigquery_agent)   
+        workflow.add_edge(START, "delegator_logic")
 
-    workflow.add_conditional_edges("delegator_logic", lambda state: state['next_agent'], {
-        "connector_agent": "call_connector_agent",
-        "smart_transformer_agent": "call_smart_transformer_agent",
-        "bigquery_agent": "call_bigquery_agent",
-        "conflict_resolver": "conflict_resolver",
-        "END": END
-    })
-    workflow.add_conditional_edges("conflict_resolver", resolution_flow, {
-        "delegator_logic": "delegator_logic",
-        "connector_agent": "call_connector_agent",
-        "bigquery_agent": "call_bigquery_agent",
-        "smart_transformer_agent": "call_smart_transformer_agent",
-        "END": END
-    })
-    workflow.add_edge("call_connector_agent", "delegator_logic")
-    workflow.add_edge("call_smart_transformer_agent", "delegator_logic")
-    workflow.add_edge("call_bigquery_agent", "delegator_logic")
+        workflow.add_conditional_edges("delegator_logic", lambda state: state['next_agent'], {
+            "connector_agent": "call_connector_agent",
+            "smart_transformer_agent": "call_smart_transformer_agent",
+            "bigquery_agent": "call_bigquery_agent",
+            "conflict_resolver": "conflict_resolver",
+            "END": END
+        })
+        workflow.add_conditional_edges("conflict_resolver", resolution_flow, {
+            "delegator_logic": "delegator_logic",
+            "connector_agent": "call_connector_agent",
+            "bigquery_agent": "call_bigquery_agent",
+            "smart_transformer_agent": "call_smart_transformer_agent",
+            "END": END
+        })
+        workflow.add_edge("call_connector_agent", "delegator_logic")
+        workflow.add_edge("call_smart_transformer_agent", "delegator_logic")
+        workflow.add_edge("call_bigquery_agent", "delegator_logic")
 
-    chain = workflow.compile()
+        chain = workflow.compile()
 
-    state = chain.invoke({"user_request" : user_request, "tasks_done": [{}], "next_agent": "", "next_task": "", "model_responses": [], "has_error": False, "retry_count": 0})
-
-    print(state)
-    return state
+        state = chain.invoke({"user_request" : user_request, "tasks_done": [{}], "next_agent": "", "next_task": "", "model_responses": [], "has_error": False, "retry_count": 0})
+        print(state)
+        mlflow.log_param("final_agent", state.get('next_agent', ''))
+        mlflow.log_metric("total_tasks_completed", len(state.get('tasks_done', [])))
+        return state
 
 if __name__ == "__main__":
+
     user_request = """Read the files wb1.csv & wb2.csv from the bucket data_storage_1146 in project data-engineering-476308, merge them on the common column. Then save the result in a new file. Upload this new file to a new bucket merged_data_storage_1146 with the same filename.
     """
     with get_openai_callback() as cb:
