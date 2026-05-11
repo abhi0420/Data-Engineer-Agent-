@@ -5,9 +5,9 @@ from agents.data_transformer import smart_transformer_agent
 from agents.connector import connector_agent
 from dotenv import load_dotenv
 from langchain_community.callbacks import get_openai_callback
-
+from config.model_config import get_llm
 load_dotenv()
-model = ChatOpenAI(model="gpt-4o-mini", temperature=0.2, max_tokens=1000)
+model = get_llm()
 
 def call_smart_transformer_agent(task: str) -> str:
     """Calls the smart transformer agent to handle data transformation tasks."""

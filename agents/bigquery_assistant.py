@@ -1,4 +1,4 @@
-from langchain_openai import ChatOpenAI
+from config.model_config import get_llm
 from langchain.agents import create_agent
 from langchain.tools import tool
 from bigquery_source import BigQuerySource
@@ -14,7 +14,7 @@ warnings.filterwarnings("ignore")
 
 load_dotenv()
 
-model = ChatOpenAI(model="gpt-4o-mini", temperature=0.2, max_tokens=1000)
+model = get_llm()
 
 @tool
 def execute_bigquery_query(project_id: str, query: str) -> str: 

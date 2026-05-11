@@ -1,9 +1,8 @@
 import mlflow
-
+from config.model_config import get_llm
 
 from typing_extensions import TypedDict, List
 from langgraph.graph import START, END, StateGraph
-from langchain_openai import ChatOpenAI
 from langchain_community.callbacks import get_openai_callback
 import json
 from agents.connector import connector_agent
@@ -24,8 +23,7 @@ mlflow.set_tracking_uri("http://localhost:5001")
 mlflow.set_experiment("Data Engineer Agent Workflow")
 
 
-model = ChatOpenAI(model="gpt-4o-mini", temperature=0.2, max_tokens=1000)
-
+model = get_llm()
 class State(TypedDict):
     user_request : str
     tasks_done : List[dict]

@@ -1,6 +1,5 @@
 import mlflow
-
-from langchain_openai import ChatOpenAI
+from config.model_config import get_llm
 from langchain.agents import create_agent
 from langchain.tools import tool
 import pandas as pd
@@ -11,8 +10,7 @@ from dotenv import load_dotenv
 from langchain_community.callbacks import get_openai_callback
 
 load_dotenv()
-model = ChatOpenAI(model="gpt-4o-mini", temperature=0.2, max_tokens=1000)
-
+model = get_llm()  # Initialize the model using the config function
 mlflow.langchain.autolog()
 mlflow.set_tracking_uri("http://localhost:5001")
 mlflow.set_experiment("Data Engineer Agent Workflow")

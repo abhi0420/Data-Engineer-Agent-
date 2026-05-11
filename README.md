@@ -133,7 +133,18 @@ pip install -r requirements.txt
 4. Configure environment variables:
 ```bash
 # Create .env file
-OPENAI_API_KEY=your_openai_api_key
+
+# LLM Provider (openai | anthropic | google) — defaults to openai
+LLM_PROVIDER=openai
+
+# Model name for the chosen provider — defaults to gpt-4o-mini
+LLM_MODEL=gpt-4o-mini
+
+# API key for the chosen provider
+OPENAI_API_KEY=your_openai_api_key        # for openai
+# ANTHROPIC_API_KEY=your_anthropic_key    # for anthropic
+# GOOGLE_API_KEY=your_google_api_key      # for google
+
 GOOGLE_APPLICATION_CREDENTIALS=path/to/service-account.json
 ```
 
@@ -211,6 +222,8 @@ Data-Engineer-Agent/
 │   ├── data_transformer.py  # Pandas transformation agent
 │   ├── bigquery_assistant.py# BigQuery operations agent
 │   └── delegator.py         # (Legacy) delegator logic
+├── config/
+│   └── model_config.py      # Centralized LLM provider configuration
 ├── gcs_source.py            # GCPSource class for GCS operations
 ├── bigquery_source.py       # BigQuerySource class for BQ operations
 ├── tests/
@@ -236,14 +249,38 @@ Error messages follow the pattern `ERROR: <description>` for consistent detectio
 ## Configuration
 
 ### Model Settings
+
+All agents share a single `get_llm()` factory from `config/model_config.py`, making it easy to swap LLM providers without touching agent code.
+
 ```python
-# In each agent file
-model = ChatOpenAI(
-    model="gpt-4o-mini",
-    temperature=0.2,      # Low temperature for consistency
-    max_tokens=1000
-)
+# config/model_config.py
+def get_llm(temperature: float = 0.2, max_tokens: int = 1000):
+    ...
 ```
+
+The provider and model are resolved from environment variables at runtime:
+
+| Variable | Default | Description |
+|---|---|---|
+| `LLM_PROVIDER` | `openai` | LLM provider to use (`openai`, `anthropic`, `google`) |
+| `LLM_MODEL` | `gpt-4o-mini` | Model name for the chosen provider |
+
+**Provider examples:**
+```bash
+# OpenAI
+LLM_PROVIDER=openai
+LLM_MODEL=gpt-4o-mini
+
+# Anthropic
+LLM_PROVIDER=anthropic
+LLM_MODEL=claude-3-5-haiku-20241022
+
+# Google Gemini
+LLM_PROVIDER=google
+LLM_MODEL=gemini-2.0-flash
+```
+
+Passing an unsupported provider raises a `ValueError` listing the valid options.
 
 ### GCS Settings
 - Default download location: `./data/`
