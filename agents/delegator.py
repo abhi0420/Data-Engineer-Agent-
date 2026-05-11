@@ -1,6 +1,5 @@
 from langchain.agents import create_agent
 from langchain.tools import tool
-from langchain_openai import ChatOpenAI
 from agents.data_transformer import smart_transformer_agent
 from agents.connector import connector_agent
 from dotenv import load_dotenv

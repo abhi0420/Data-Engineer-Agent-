@@ -310,7 +310,7 @@ If REQUIRED parameters are missing and cannot be inferred, respond with:
 Use the appropriate tools to complete the operation. Report any tool errors back as ERROR messages.
 Once complete, provide clear status with relevant details.
        """,
-        tools=[execute_bigquery_query, create_bigquery_dataset, create_bigquery_table, insert_rows_into_bigquery, load_table_from_gcs]
+        tools=[execute_bigquery_query, create_bigquery_dataset, create_bigquery_table, insert_rows_into_bigquery, load_table_from_gcs, delete_bigquery_table, create_view, create_partitioned_table]
     )
 
 if __name__ == "__main__":
