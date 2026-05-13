@@ -46,39 +46,45 @@ def extract_data_from_gcp(project_id : str, bucket_name : str, filename : str) -
 
 
 @tool
-def load_data_to_gcp(project_id: str, bucket_name: str,  source_file_path: str, dest_blob_name: str, create_new_bucket: bool = False) -> str:
-    """Uploads data to the given GCP bucket from a local file."""
-    
-    # First, try to connect to existing bucket
+def create_gcs_bucket(project_id: str, bucket_name: str, location: str = "US") -> str:
+    """Creates a new GCS bucket in the given project."""
+    try:
+        gcp_obj = GCPSource.create_bucket(project_id, bucket_name, location=location)
+        if not gcp_obj:
+            return f"""ERROR: Bucket Creation Failed
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+❌ Failed to create bucket '{bucket_name}' in project '{project_id}'.
+"""
+        return f"""✅ Bucket Created
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+📦 Bucket: {bucket_name}
+📍 Project: {project_id}
+🌍 Location: {location}
+"""
+    except Exception as e:
+        return f"ERROR: Bucket Creation Failed - {str(e)}"
+
+
+@tool
+def load_data_to_gcp(project_id: str, bucket_name: str, source_file_path: str, dest_blob_name: str) -> str:
+    """Uploads a local file to an existing GCS bucket. Use create_gcs_bucket first if the bucket does not exist."""
+
     gcp_obj = GCPSource(project_id, bucket_name)
-    bucket_exists = gcp_obj.bucket_exists()
     if not os.path.exists(source_file_path):
         print("Path does not exist locally, prepending ./data/")
         source_file_path = "./data/" + source_file_path
 
-    if not bucket_exists:
-        if create_new_bucket:
-            # Create bucket and get new instance
-            print(f"Bucket {bucket_name} does not exist. Creating new bucket in project {project_id}.")
-            gcp_obj = GCPSource.create_bucket(project_id, bucket_name)
-            if not gcp_obj:
-                return f"""ERROR: Bucket Creation Failed
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-❌ Failed to create bucket '{bucket_name}' in project '{project_id}'.
-"""
-            print(f"Bucket {bucket_name} created in project {project_id}.")
-        else:
-            return f"""ERROR: Bucket Not Found
+    if not gcp_obj.bucket_exists():
+        return f"""ERROR: Bucket Not Found
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ❌ Bucket '{bucket_name}' does not exist in project '{project_id}'.
-💡 Tip: Set create_new_bucket=True to create it.
+💡 Tip: Use the create_gcs_bucket tool to create it first.
 """
-    else:
-        print("Connected to existing GCP bucket.")
+
+    print("Connected to existing GCP bucket.")
     print(f"Proceeding to upload file {source_file_path} as {dest_blob_name}")
-    # Upload file (works for both new and existing buckets)
     upload_status = gcp_obj.upload_file(source_file_path, dest_blob_name)
-    time.sleep(2)  
+    time.sleep(2)
     if "ERROR" in upload_status:
         return f"""ERROR: Upload Failed
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -100,10 +106,11 @@ connector_agent = create_agent(
 
 Your job is to extract parameters from the task description and call the appropriate tool. Each tool has a docstring that describes its required and optional parameters - read them carefully.
 
-If critical information is missing and cannot be inferred from the task, respond starting with "ERROR:" and clearly state what information is needed.
+If critical information is missing and cannot be inferred from the task, respond starting with "ERROR:" and clearly state what the error was & what information is needed.
 
-Report any tool errors back starting with ERROR.""",
-        tools=[extract_data_from_gcp, load_data_to_gcp]
+Report any tool errors back starting with ERROR and include the error message in your response.
+""",
+        tools=[extract_data_from_gcp, load_data_to_gcp, create_gcs_bucket]
          )
 
 if __name__ == "__main__":

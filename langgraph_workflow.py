@@ -67,7 +67,7 @@ def conflict_resolver(state: State) -> State:
     latest_model_response = state['model_responses'][-1] if state['model_responses'] else ""
     error_details = state.get('error_details', "")
     if latest_model_response or error_details:
-        if state["retry_count"] < 3:
+        if state["retry_count"] < 2:
             state["retry_count"] += 1
             mlflow.set_tag("error_details", state["error_details"][:200])
             mlflow.log_metric("retry_count", state["retry_count"])
@@ -81,7 +81,7 @@ def conflict_resolver(state: State) -> State:
             prompt = f"""
             You are a Conflict Resolver in a Data Engineering team. Your teammates are:
 
-            1. Connector Agent : GCS operations (upload, download, delete, list files)
+            1. Connector Agent : GCS operations (upload, download, delete files, list files, create buckets)
             2. Smart Transformer Agent : Data transformations using pandas
             3. BigQuery Agent : BigQuery operations (datasets, tables, queries)
 
@@ -93,7 +93,11 @@ def conflict_resolver(state: State) -> State:
             - Previous agent responses: {json.dumps(relevant_tasks, indent=2)}
 
             YOUR ROLE:
-            Analyze the error and fix the failed task. The failed task already contains some parameters - preserve them and add/fix only what's needed.
+
+            - Analyse the failed task, error details, and previous agent responses to identify the root cause of the failure.
+            - Check which agent is best suited to fix the issue based on the nature of the error and the capabilities of each agent.
+            - Call the right agent to fix the issue with the correct parameters
+            - If the issue cannot be fixed by the agents, suggest a resolution or workaround. If the issue is unresolvable, recommend ending the workflow
             
             CRITICAL: Your response must include ALL parameters needed for the task, not just the missing ones. 
             
@@ -118,7 +122,7 @@ def conflict_resolver(state: State) -> State:
                 print("Conflict Resolver Response : ", response.content)
                 response_content = response.content
                 if isinstance(response_content, str):
-                    response_content = ast.literal_eval(response_content)
+                    response_content = json.loads(response_content)
                 
                 # Parse structured format
                 state['next_agent'] = response_content.get('agent', 'END')
@@ -128,7 +132,6 @@ def conflict_resolver(state: State) -> State:
                 mlflow.set_tag("recommended_action", response_content.get('action', ''))
                 state['has_error'] = False
                 state['error_details'] = ""
-                state['retry_count'] = 0
             except Exception as e:
                 print("Conflict Resolver encountered an error: ", str(e))
                 state['next_agent'] = 'END'
@@ -230,7 +233,7 @@ def delegator_logic(state: State) -> State:
     response_content = response.content
 
     if isinstance(response_content, str):
-        response_content = ast.literal_eval(response_content)
+        response_content = json.loads(response_content)
     next_agent = response_content['agent']
     # Normalize agent name - remove "call_" prefix if present
     if next_agent.startswith("call_"):
@@ -259,6 +262,8 @@ def call_smart_transformer_agent(state : State) -> State:
         state["error_details"] = response['messages'][-1].content
     else:
         state["tasks_done"].append({"call_smart_transformer_agent": state['next_task']})
+        state['error_details'] = ""  # Clear error
+        state['retry_count'] = 0
         state['model_responses'].append("smart_transformer_agent" + response['messages'][-1].content)
     return state
 
@@ -278,6 +283,7 @@ def call_connector_agent(state : State) -> State:
         # Don't update tasks_done or model_responses
     else:
         state['error_details'] = ""  # Clear error
+        state['retry_count'] = 0
         state["tasks_done"].append({"call_connector_agent": state['next_task']})
         state['model_responses'].append("connector_agent:" + response['messages'][-1].content)
     return state
@@ -295,7 +301,8 @@ def call_bigquery_agent(state : State) -> State:
         state['has_error'] = True
         state['error_details'] = response_text
     else:
-        state['error_details'] = ""
+        state['error_details'] = ""  # Clear error
+        state['retry_count'] = 0
         state["tasks_done"].append({"bigquery_agent": state['next_task']})
         state['model_responses'].append("bigquery_agent:" + response_text)
     return state
@@ -340,7 +347,7 @@ def execute_workflow(user_request):
 
 if __name__ == "__main__":
 
-    user_request = """Read the files wb1.csv & wb2.csv from the bucket data_storage_1146 in project data-engineering-476308, merge them on the common column. Then save the result in a new file. Upload this new file to a new bucket merged_data_storage_1146 with the same filename.
+    user_request = """Read the files wb1.csv & wb2.csv from the bucket  emp-data-init in project data-eng-proj-496117, merge them on the common column. Then save the result in a new file. Upload this new file to a new bucket merged_data_2899 with the same filename.
     """
     with get_openai_callback() as cb:
         try:
