@@ -96,22 +96,21 @@ def conflict_resolver(state: State) -> State:
 
             - Analyse the failed task, error details, and previous agent responses to identify the root cause of the failure.
             - Check which agent is best suited to fix the issue based on the nature of the error and the capabilities of each agent.
-            - Call the right agent to fix the issue with the correct parameters
-            - If the issue cannot be fixed by the agents, suggest a resolution or workaround. If the issue is unresolvable, recommend ending the workflow
-            
-            CRITICAL: Your response must include ALL parameters needed for the task, not just the missing ones. 
-            
-            Before providing a response, think if it is correct, don't give fake/placeholder values. If you cannot find a required value in the context, return END.
+            - Generate a response mentioning the agent to be called next, the action to be taken & ALL the parameters required for that action in the format :
 
-            RESPONSE FORMAT:
             {{
                 "agent" : "agent_name",
                 "action" : "task description",
                 "parameters" : {{"param1" : "value1", "param2" : "value2", ...}}  
             }}
 
-            If unresolvable:
+
+            - If the issue is unresolvable or beyond your scope, recommend ending the workflow, like :
+
             {{"agent" : "END", "action" : "Cannot resolve - [reason]", "parameters" : {{}}}}
+    
+            
+            CRITICAL : Before providing a response, think if it is correct, don't give fake/placeholder values. If you cannot find a required value in the context, return END.
 
             FORMATTING: Use True/False for booleans, double quotes for strings.
             
@@ -160,14 +159,14 @@ def delegator_logic(state: State) -> State:
         state['tasks_done'].append({"Delegator": "The task was ended."})
         return state
     prompt = f"""
-        In a Data Engineering team, you are the Delegator. Your main task is to understand users request, break it into atomic tasks & call the right tool & assign the appropriate tasks to them. You are provided with the following Agents
+        In a Data Engineering team, you are the Delegator. Your task is to understand users request, break it into atomic tasks & call the right tool & assign the appropriate tasks to them. You are provided with the following Agent Tools
 
         1. call_connector_agent Tool : 
 
         - Download ONE file at a time from GCS into local storage
-        - Upload ONE file at a time to GCS from local storage
+        - Upload ONE file at a time to an existing GCS bucket from local storage
+        - Create a new GCS bucket 
         - Delete files from GCS
-        - Create new GCS buckets
         - List files in GCS buckets
     
 
