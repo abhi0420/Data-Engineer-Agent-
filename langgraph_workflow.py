@@ -180,10 +180,10 @@ def delegator_logic(state: State) -> State:
 
         3. call_bigquery_agent Tool : 
 
-        - Create datasets & tables
+        - Create datasets
+        - Load data from GCS into BigQuery tables (also creates the table automatically with auto-detected schema)
         - Insert rows into tables
         - Query data
-        - Load data from GCS into BigQuery tables
 
         Conflict_resolver Node : Helps resolve any conflicts that arise during the execution of tasks by other agents. Call this tool when an error occurs. 
 
@@ -191,7 +191,7 @@ def delegator_logic(state: State) -> State:
         This is the user's request: {user_request}
 
 
-        Tasks Completed so far: {json.dumps(tasks_done[-5:], indent=2)}
+        Tasks Completed so far: {json.dumps(tasks_done, indent=2)}
 
         Recent Agent Responses :
         {json.dumps(state.get('model_responses', [])[-2:], indent=2)}
@@ -346,7 +346,7 @@ def execute_workflow(user_request):
 
 if __name__ == "__main__":
 
-    user_request = """Read the files wb1.csv & wb2.csv from the bucket  emp-data-init in project data-eng-proj-496117, merge them on the common column. Then save the result in a new file. Upload this new file to a new bucket merged_data_2899 with the same filename.
+    user_request = """Read the files wb1.csv & wb2.csv from the bucket  emp-data-init in project data-eng-proj-496117, merge them on the common column. Then save the result in a new file. Upload this new file to a new bucket merged_data_2899 with the same filename. Then create a new table emp_data in BigQuery dataset init_data_4778 and load the data from the merged file into that table. Finally run a query to get me the top 5 rows from that table.
     """
     with get_openai_callback() as cb:
         try:

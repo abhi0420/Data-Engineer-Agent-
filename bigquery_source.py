@@ -90,7 +90,7 @@ class BigQuerySource:
         try:
             query_job = self.client.query(query)
             results = query_job.result()
-            df = results.to_dataframe()
+            df = results.to_dataframe(create_bqstorage_client=False)
             return df
         except Exception as e:
             print(f"ERROR : Failed to execute query. Exception: {str(e)}")
@@ -121,13 +121,14 @@ class BigQuerySource:
 
         job_config = bigquery.LoadJobConfig(
                     schema=schema,
-                    skip_leading_rows=skip_leading_rows,
+                    skip_leading_rows=skip_leading_rows if schema is not None else 0,
                     source_format=bigquery.SourceFormat.CSV,
+                    autodetect=(schema is None),
                     )
         
         if file_format.upper() == "CSV":
             job_config.source_format = bigquery.SourceFormat.CSV
-            job_config.skip_leading_rows = skip_leading_rows
+            job_config.skip_leading_rows = skip_leading_rows if schema is not None else 0
             job_config.field_delimiter = field_delimiter
         elif file_format.upper() == "JSON":
             job_config.source_format = bigquery.SourceFormat.NEWLINE_DELIMITED_JSON
