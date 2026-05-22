@@ -100,7 +100,38 @@ def infer_schema_from_file(file_path: str) -> str:
 
 
 @tool
-def execute_bigquery_query(project_id: str, query: str) -> str: 
+def verify_bigquery_query(project_id: str, query: str) -> str:
+    """Validates a BigQuery query via a dry run BEFORE executing it.
+    Checks SQL syntax, table/column references, and reports the estimated bytes processed
+    without consuming query quota or returning rows. Use this for SELECT/read queries prior
+    to execute_bigquery_query to catch errors and gauge cost.
+
+    Required parameters:
+        - project_id: The GCP project ID
+        - query: The SQL query to validate
+    """
+    try:
+        bq_obj = BigQuerySource(project_id)
+        job_config = bigquery.QueryJobConfig(dry_run=True, use_query_cache=False)
+        query_job = bq_obj.client.query(query, job_config=job_config)
+        bytes_processed = query_job.total_bytes_processed or 0
+        mb_processed = bytes_processed / (1024 * 1024)
+    except Exception as e:
+        return f"""ERROR: Query Validation Failed
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+❌ {str(e)}
+📝 Query: {query[:200]}{'...' if len(query) > 200 else ''}
+"""
+
+    return f"""✅ Query Validated Successfully (dry run)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+📦 Estimated bytes processed: {bytes_processed} ({mb_processed:.2f} MB)
+📝 Query is syntactically valid and references exist.
+"""
+
+
+@tool
+def execute_bigquery_query(project_id: str, query: str) -> str:
     """Executes a BigQuery SQL query and returns the results as a string.
     
     Required parameters:
@@ -392,10 +423,12 @@ If REQUIRED parameters are missing and cannot be inferred, respond with:
 
 "ERROR: The task requires the parameters - [list of all parameters]. Cannot proceed.". Mentioning ALL parameters is important so conlfict can be resolved in one go.
 
+For read queries (SELECT/WITH), call verify_bigquery_query first. If it returns ERROR, skip execute_bigquery_query and return the error.
+
 Use the appropriate tools to complete the operation. Report any tool errors back as ERROR messages.
 Once complete, provide clear status with relevant details.
        """,
-        tools=[execute_bigquery_query, create_bigquery_dataset, create_bigquery_table, insert_rows_into_bigquery, load_table_from_gcs, delete_bigquery_table, create_view, create_partitioned_table, infer_schema_from_file]
+        tools=[verify_bigquery_query, execute_bigquery_query, create_bigquery_dataset, create_bigquery_table, insert_rows_into_bigquery, load_table_from_gcs, delete_bigquery_table, create_view, create_partitioned_table, infer_schema_from_file]
     )
 
 if __name__ == "__main__":
