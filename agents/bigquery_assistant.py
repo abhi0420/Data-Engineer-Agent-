@@ -17,6 +17,14 @@ load_dotenv()
 
 model = get_llm()
 
+BQ_PRICE_PER_TIB_USD = 6.25
+COST_WARN_THRESHOLD_USD = 0.10
+COST_HALT_THRESHOLD_USD = 1.00
+
+
+def _estimate_query_cost_usd(bytes_processed: int) -> float:
+    return (bytes_processed / (1024 ** 4)) * BQ_PRICE_PER_TIB_USD
+
 
 
 
@@ -116,6 +124,7 @@ def verify_bigquery_query(project_id: str, query: str) -> str:
         query_job = bq_obj.client.query(query, job_config=job_config)
         bytes_processed = query_job.total_bytes_processed or 0
         mb_processed = bytes_processed / (1024 * 1024)
+        est_cost = _estimate_query_cost_usd(bytes_processed)
     except Exception as e:
         return f"""ERROR: Query Validation Failed
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -123,9 +132,16 @@ def verify_bigquery_query(project_id: str, query: str) -> str:
 📝 Query: {query[:200]}{'...' if len(query) > 200 else ''}
 """
 
+    cost_line = f"💰 Estimated cost: ${est_cost:.4f}"
+    if est_cost > COST_HALT_THRESHOLD_USD:
+        cost_line += f"\n🛑 HALT THRESHOLD EXCEEDED (>${COST_HALT_THRESHOLD_USD:.2f}) — execute_bigquery_query will require human approval."
+    elif est_cost > COST_WARN_THRESHOLD_USD:
+        cost_line += f"\n⚠️  COST WARNING (>${COST_WARN_THRESHOLD_USD:.2f})"
+
     return f"""✅ Query Validated Successfully (dry run)
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 📦 Estimated bytes processed: {bytes_processed} ({mb_processed:.2f} MB)
+{cost_line}
 📝 Query is syntactically valid and references exist.
 """
 
@@ -141,7 +157,27 @@ def execute_bigquery_query(project_id: str, query: str) -> str:
     
     bq_obj = BigQuerySource(project_id)
     print("BigQuery Client Initialized.")
-    
+
+    try:
+        dry_job = bq_obj.client.query(query, job_config=bigquery.QueryJobConfig(dry_run=True, use_query_cache=False))
+        est_cost = _estimate_query_cost_usd(dry_job.total_bytes_processed or 0)
+    except Exception:
+        est_cost = 0.0  # let the real query surface the underlying error below
+
+    if est_cost > COST_HALT_THRESHOLD_USD:
+        print(f"\n🛑 HIGH COST QUERY: estimated ${est_cost:.4f} (>${COST_HALT_THRESHOLD_USD:.2f})")
+        print(f"Query: {query[:300]}{'...' if len(query) > 300 else ''}")
+        try:
+            response = input("Approve execution? [y/N]: ").strip().lower()
+        except EOFError:
+            response = ""
+        if response != "y":
+            return f"""ERROR: Query Execution Denied
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+❌ User declined to approve query with estimated cost ${est_cost:.4f}
+📝 Query: {query[:200]}{'...' if len(query) > 200 else ''}
+"""
+
     try:
         df = bq_obj.query(query)
         result_str = df.to_string(index=False)
