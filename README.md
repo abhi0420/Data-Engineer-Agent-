@@ -65,8 +65,9 @@ Handles Google Cloud Storage operations.
 
 |           Tool          |          Description            | Parameters |
 |-------------------------|---------------------------------|------------|
-| `extract_data_from_gcp` | Download file from GCS to local | `project_id`, `bucket_name`, `filename` `bucket_name`, `filename` |
-| `load_data_to_gcp`      | Upload local file to GCS        | `project_id`, `bucket_name`, `source_file_path`, `dest_blob_name`, `create_new_bucket` |
+| `extract_data_from_gcp` | Download file from GCS to local | `project_id`, `bucket_name`, `filename` |
+| `load_data_to_gcp`      | Upload local file to GCS        | `project_id`, `bucket_name`, `source_file_path`, `dest_blob_name` |
+| `create_gcs_bucket`     | Create a new GCS bucket         | `project_id`, `bucket_name`, `location` |
 
 ### 2. Smart Transformer Agent
 Performs pandas-based data transformations with AI-generated code.
@@ -84,15 +85,20 @@ Performs pandas-based data transformations with AI-generated code.
 ### 3. BigQuery Agent
 Manages BigQuery datasets, tables, and queries.
 
-|             Tool          |      Description     | Parameters |
-|---------------------------|----------------------|------------|
-| `create_bigquery_dataset` | Create a new dataset | `project_id`, `dataset_id`, `location` |
-| `create_bigquery_table`   | Create table with schema | `project_id`, `dataset_id`, `table_id`, `schema` |
-| `create_partitioned_table`| Create partitioned table | `project_id`, `dataset_id`, `table_id`, `schema`, `partition_field` |
-| `execute_bigquery_query` | Run SQL query | `project_id`, `query` |
-| `load_table_from_gcs`    | Load data from GCS URI | `project_id`, `dataset_id`, `table_id`, `source_uri`, `schema`, `file_format` |
-| `insert_rows_into_bigquery`| Insert rows into table | `project_id`, `dataset_id`, `table_id`, `rows` |
-| `create_view`              | Create a view          | `project_id`, `dataset_id`, `view_id`, `query` |
+|             Tool            |      Description     | Parameters |
+|-----------------------------|----------------------|------------|
+| `create_bigquery_dataset`   | Create a new dataset | `project_id`, `dataset_id`, `location` |
+| `create_bigquery_table`     | Create table with schema | `project_id`, `dataset_id`, `table_id`, `schema` |
+| `create_partitioned_table`  | Create partitioned table | `project_id`, `dataset_id`, `table_id`, `schema`, `partition_field` |
+| `verify_bigquery_query`     | Dry-run a SELECT query — validates syntax, estimates bytes/cost without executing | `project_id`, `query` |
+| `execute_bigquery_query`    | Run SQL query and return results | `project_id`, `query` |
+| `load_table_from_gcs`       | Load data from GCS URI (creates table automatically with autodetect schema) | `project_id`, `dataset_id`, `table_id`, `source_uri`, `schema`\*, `file_format`\* |
+| `insert_rows_into_bigquery` | Insert rows into table | `project_id`, `dataset_id`, `table_id`, `rows` |
+| `create_view`               | Create a view | `project_id`, `dataset_id`, `view_id`, `query` |
+| `delete_bigquery_table`     | Delete a table | `project_id`, `dataset_id`, `table_id` |
+| `infer_schema_from_file`    | Infer BQ schema from local or GCS file (CSV, JSON, Parquet) | `file_path` |
+
+\* Optional — omit for autodetect.
 
 ### 4. Conflict Resolver
 Automatically handles errors by:
@@ -285,6 +291,31 @@ Passing an unsupported provider raises a `ValueError` listing the valid options.
 ### GCS Settings
 - Default download location: `./data/`
 - Backup location: `./backups/`
+
+## Experiment Tracking (MLflow)
+
+Every workflow run is tracked via MLflow under the experiment **"Data Engineer Agent Workflow"**.
+
+### Starting the MLflow UI
+```bash
+mlflow ui --port 5001
+```
+Then open `http://localhost:5001`.
+
+### What's tracked
+
+| Logged Item | Type | Description |
+|---|---|---|
+| `user_request` | param | The original user request (first 250 chars) |
+| `delegated_tasks_count` | metric | Number of tasks delegated so far |
+| `retry_count` | metric | Number of conflict resolver retries |
+| `error_details` | tag | Error message triggering conflict resolution |
+| `delegator_next_agent` | tag | Agent selected by delegator each step |
+| `recommended_agent` | tag | Agent recommended by conflict resolver |
+| `recommended_action` | tag | Action recommended by conflict resolver |
+| LangChain traces | auto | Full agent traces via `mlflow.langchain.autolog()` |
+
+Individual tool runs (e.g. `generate_pandas_logic`) are also logged as nested MLflow runs with their own metrics.
 
 ## Testing
 
