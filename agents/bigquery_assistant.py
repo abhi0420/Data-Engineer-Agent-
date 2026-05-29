@@ -367,7 +367,7 @@ def load_table_from_gcs(project_id: str, dataset_id: str, table_id: str, source_
         except (ValueError, SyntaxError) as e:
             return f"ERROR : Invalid schema format. Expected list of dicts. Exception: {str(e)}"
     
-    result = bq_obj.load_data_from_gcs(dataset_id, table_id, source_uri, file_format, 1 if schema_fields is not None else 0, schema_fields)
+    result = bq_obj.load_data_from_gcs(dataset_id, table_id, source_uri, file_format, 1, schema_fields)
     time.sleep(2)
     
     if "ERROR" in str(result).upper():

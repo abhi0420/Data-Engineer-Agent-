@@ -1,0 +1,385 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>DQ Report — {{ table_name }}</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  {% raw %}
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: #f8fafc; color: #0f172a; min-height: 100vh;
+    }
+    header {
+      background: linear-gradient(135deg, #1e3a5f 0%, #1e40af 100%);
+      color: white; padding: 2rem 2.5rem; display: flex;
+      justify-content: space-between; align-items: flex-end;
+    }
+    header h1 { font-size: 1.6rem; font-weight: 700; letter-spacing: -0.02em; }
+    header p  { font-size: 0.85rem; opacity: 0.75; margin-top: 0.3rem; }
+    .meta     { text-align: right; font-size: 0.8rem; opacity: 0.7; }
+    main { max-width: 1200px; margin: 0 auto; padding: 2rem 1.5rem; }
+    .card {
+      background: white; border-radius: 12px; padding: 1.5rem 2rem;
+      box-shadow: 0 1px 3px rgba(0,0,0,.08), 0 1px 2px rgba(0,0,0,.06);
+      margin-bottom: 1.5rem;
+    }
+    h2 {
+      font-size: 1.05rem; font-weight: 700; color: #1e293b;
+      margin-bottom: 1.25rem; padding-bottom: 0.6rem;
+      border-bottom: 2px solid #f1f5f9;
+    }
+    .kpi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px,1fr)); gap: 1rem; }
+    .kpi {
+      background: #f8fafc; border-radius: 10px; padding: 1.25rem 1.5rem;
+      border: 1px solid #e2e8f0; display: flex; flex-direction: column; gap: 0.4rem;
+    }
+    .kpi-label {
+      font-size: 0.75rem; font-weight: 600; color: #64748b;
+      text-transform: uppercase; letter-spacing: 0.07em;
+    }
+    .kpi-value { font-size: 1.7rem; font-weight: 800; line-height: 1; }
+    .pillar-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px,1fr)); gap: 1rem; }
+    .pillar {
+      border-radius: 10px; padding: 1.25rem 1.5rem; border: 1px solid #e2e8f0;
+      background: #f8fafc;
+    }
+    .pillar-name {
+      font-size: 0.8rem; font-weight: 600; color: #64748b;
+      text-transform: uppercase; letter-spacing: 0.07em; margin-bottom: 0.5rem;
+    }
+    .pillar-score { font-size: 2rem; font-weight: 800; margin-bottom: 0.5rem; }
+    .charts-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; }
+    @media(max-width:700px) { .charts-grid { grid-template-columns: 1fr; } }
+    .chart-wrap { position: relative; height: 280px; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.875rem; }
+    th {
+      text-align: left; padding: 0.65rem 1rem; background: #f8fafc;
+      color: #64748b; font-size: 0.75rem; text-transform: uppercase;
+      letter-spacing: 0.06em; border-bottom: 2px solid #e2e8f0;
+    }
+    td { padding: 0.75rem 1rem; border-bottom: 1px solid #f1f5f9; vertical-align: middle; }
+    tr:last-child td { border-bottom: none; }
+    tr:hover td { background: #f8fafc; }
+    code {
+      background: #f1f5f9; padding: 1px 6px; border-radius: 4px;
+      font-size: 0.8rem; color: #475569;
+    }
+    .progress-wrap { background: #e2e8f0; border-radius: 999px; height: 8px; width: 100%; }
+    .progress-bar  { height: 8px; border-radius: 999px; transition: width 0.6s ease; }
+    .badge {
+      display: inline-block; font-weight: 700; padding: 2px 10px;
+      border-radius: 999px; font-size: 0.78rem; letter-spacing: 0.05em;
+    }
+    footer { text-align: center; color: #94a3b8; font-size: 0.78rem; padding: 2rem; }
+  </style>
+  {% endraw %}
+</head>
+<body>
+
+<!-- ── Header ─────────────────────────────────────────────────────────────── -->
+<header>
+  <div>
+    <h1>Data Quality Report</h1>
+    <p>{{ table_name }}</p>
+  </div>
+  <div class="meta">
+    Generated: {{ generated_at }}<br/>
+    {{ "{:,}".format(total_rows) }} rows &middot; {{ col_count }} columns
+  </div>
+</header>
+
+<main>
+
+  {% if approximate %}
+  <!-- ── Sampling warning banner ───────────────────────────────────────── -->
+  <div style="background:#fef3c7;border:1px solid #f59e0b;border-radius:8px;
+              padding:12px 18px;margin-bottom:18px;display:flex;align-items:flex-start;gap:12px;">
+    <span style="font-size:1.25rem;line-height:1;">&#9888;</span>
+    <div>
+      <strong style="color:#92400e;">Results are approximate</strong>
+      <p style="margin:4px 0 0;color:#78350f;font-size:0.875rem;">
+        {{ sample_note }}<br/>
+        Standard checks (null rates, completeness, uniqueness, min/max) were computed on a
+        statistical sample of the full table to avoid excessive scan costs. Exact counts
+        may differ from the sampled values shown in this report.
+      </p>
+    </div>
+  </div>
+  {% endif %}
+
+  <!-- ── Overview KPIs ──────────────────────────────────────────────────── -->
+  <section class="card">
+    <h2>Overview</h2>
+    <div class="kpi-grid">
+
+      <div class="kpi">
+        <span class="kpi-label">Overall Health</span>
+        <span class="kpi-value" style="color:{{ status_color(overall_status) }};">{{ overall_score }}%</span>
+        {{ badge(overall_status) }}
+      </div>
+
+      <div class="kpi">
+        <span class="kpi-label">Total Rows</span>
+        <span class="kpi-value" style="color:#1e40af;">{{ "{:,}".format(total_rows) }}</span>
+      </div>
+
+      <div class="kpi">
+        <span class="kpi-label">Columns</span>
+        <span class="kpi-value" style="color:#1e40af;">{{ col_count }}</span>
+      </div>
+
+      <div class="kpi">
+        <span class="kpi-label">Dynamic Checks</span>
+        <span class="kpi-value" style="color:#1e40af;">{{ dyn_pass }}/{{ dyn_total }}</span>
+        <span style="font-size:0.75rem;color:#64748b;">passed</span>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- ── Quality Pillars ────────────────────────────────────────────────── -->
+  <section class="card">
+    <h2>Quality Pillars</h2>
+    <div class="pillar-grid">
+
+      {% for p in pillars %}
+      <div class="pillar">
+        <div class="pillar-name">{{ p.name }}</div>
+        <div class="pillar-score" style="color:{{ status_color(p.status) }};">
+          {% if p.score is not none %}{{ p.score }}%{% else %}N/A{% endif %}
+        </div>
+        {% if p.score is not none %}
+          {{ progress_bar(p.score, p.status) }}
+        {% else %}
+          <p style="color:#94a3b8;font-size:0.8rem;">{{ p.na_label }}</p>
+        {% endif %}
+        <div style="margin-top:0.5rem;">{{ badge(p.status) }}</div>
+      </div>
+      {% endfor %}
+
+    </div>
+  </section>
+
+  <!-- ── Charts ─────────────────────────────────────────────────────────── -->
+  <section class="card">
+    <h2>Visualisations</h2>
+    <div class="charts-grid">
+      <div>
+        <p style="font-size:0.8rem;font-weight:600;color:#64748b;margin-bottom:0.75rem;">PILLAR SCORES</p>
+        <div class="chart-wrap"><canvas id="radarChart"></canvas></div>
+      </div>
+      <div>
+        <p style="font-size:0.8rem;font-weight:600;color:#64748b;margin-bottom:0.75rem;">NULL RATE PER COLUMN (%)</p>
+        <div class="chart-wrap"><canvas id="nullChart"></canvas></div>
+      </div>
+      <div>
+        <p style="font-size:0.8rem;font-weight:600;color:#64748b;margin-bottom:0.75rem;">COMPLETENESS PER COLUMN (%)</p>
+        <div class="chart-wrap"><canvas id="completeChart"></canvas></div>
+      </div>
+      <div>
+        <p style="font-size:0.8rem;font-weight:600;color:#64748b;margin-bottom:0.75rem;">UNIQUENESS PER COLUMN (%)</p>
+        <div class="chart-wrap"><canvas id="uniqueChart"></canvas></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── Column Details ─────────────────────────────────────────────────── -->
+  <section class="card">
+    <h2>Column Details</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>Column</th>
+          <th>Nulls</th>
+          <th>Null Severity</th>
+          <th>Completeness</th>
+          <th>Uniqueness</th>
+          <th>Range (min &ndash; max / avg)</th>
+          <th>Latest Value</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for col, v in columns.items() %}
+        <tr>
+          <td style="font-weight:600;color:#1e293b;">{{ col }}</td>
+          <td style="text-align:center;">{{ v.null_count }} ({{ v.null_pct }}%)</td>
+          <td style="text-align:center;">{{ badge(v.null_severity) }}</td>
+          <td>
+            {{ progress_bar(v.completeness_pct, "PASS" if v.completeness_pct >= 95 else ("WARN" if v.completeness_pct >= 85 else "FAIL")) }}
+            <span style="font-size:0.75rem;color:#64748b;">{{ v.completeness_pct }}%</span>
+          </td>
+          <td>
+            {{ progress_bar(v.uniqueness_pct, v.unique_severity) }}
+            <span style="font-size:0.75rem;color:#64748b;">{{ v.uniqueness_pct }}%</span>
+          </td>
+          <td style="font-size:0.8rem;color:#475569;">
+            {% if v.min is defined %}{{ v.min }} &ndash; {{ v.max }} (avg {{ v.avg }}){% else %}&#8212;{% endif %}
+          </td>
+          <td style="font-size:0.8rem;color:#475569;">
+            {{ v.latest_value if v.latest_value is defined else "—" }}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </section>
+
+  <!-- ── Dynamic Checks ─────────────────────────────────────────────────── -->
+  <section class="card">
+    <h2>Dynamic Checks</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>Check</th>
+          <th>Description</th>
+          <th>Result</th>
+          <th>Pass Condition</th>
+          <th>Status</th>
+          <th>Note</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% if dyn_checks %}
+          {% for c in dyn_checks %}
+          <tr>
+            <td style="font-weight:600;">{{ c.name | default("") }}</td>
+            <td style="color:#475569;">{{ c.description | default("") }}</td>
+            <td style="text-align:center;font-family:monospace;font-size:0.8rem;">{{ c.result | default("&mdash;") }}</td>
+            <td style="font-family:monospace;font-size:0.75rem;color:#64748b;">{{ c.pass_condition | default("") }}</td>
+            <td style="text-align:center;">{{ badge(c.status | default("?")) }}</td>
+            <td style="font-size:0.75rem;color:#ef4444;">{{ c.reason | default("") }}</td>
+          </tr>
+          {% endfor %}
+        {% else %}
+          <tr>
+            <td colspan="6" style="text-align:center;color:#94a3b8;padding:1.5rem;">No dynamic checks run</td>
+          </tr>
+        {% endif %}
+      </tbody>
+    </table>
+  </section>
+
+  <!-- ── Cross-Table Integrity ──────────────────────────────────────────── -->
+  {% if show_cross %}
+  <section class="card">
+    <h2>Cross-Table Integrity</h2>
+    <p style="color:#475569;margin-bottom:1rem;">
+      <strong>{{ xref.table1 }}</strong> &rarr; <strong>{{ xref.table2 }}</strong>
+      &nbsp;&middot;&nbsp; Join key: <code>{{ xref.join_key }}</code>
+      &nbsp;&middot;&nbsp; Scan: {{ xref.estimated_gb }} GB
+    </p>
+    <div style="display:flex;align-items:center;gap:1rem;">
+      {{ badge(xref.status) }}
+      <span style="color:#475569;">
+        {% if xref.orphaned_rows == 0 %}
+          No orphaned rows found.
+        {% else %}
+          <strong style="color:#ef4444;">{{ "{:,}".format(xref.orphaned_rows) }} orphaned rows</strong>
+          in {{ xref.table1 }}.
+        {% endif %}
+      </span>
+    </div>
+  </section>
+  {% endif %}
+
+</main>
+
+<footer>Data Engineer Agent &nbsp;&middot;&nbsp; DQ Report &nbsp;&middot;&nbsp; {{ generated_at }}</footer>
+
+<!-- ── Chart data injected by Python ──────────────────────────────────────── -->
+<script>
+  const D = {{ chart_data | safe }};
+</script>
+
+{% raw %}
+<script>
+  const FONT = { family: "-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif", size: 12 };
+  Chart.defaults.font = FONT;
+  Chart.defaults.color = "#64748b";
+
+  // Radar — pillar scores
+  new Chart(document.getElementById("radarChart"), {
+    type: "radar",
+    data: {
+      labels: D.pillar_labels,
+      datasets: [{
+        label: "Score (%)",
+        data: D.pillar_values,
+        backgroundColor: "rgba(30,64,175,0.15)",
+        borderColor: "#1e40af",
+        borderWidth: 2,
+        pointBackgroundColor: D.pillar_colors,
+        pointRadius: 5,
+      }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      scales: { r: { min: 0, max: 100, ticks: { stepSize: 25 }, grid: { color: "#e2e8f0" } } },
+      plugins: { legend: { display: false } }
+    }
+  });
+
+  // Null rate
+  new Chart(document.getElementById("nullChart"), {
+    type: "bar",
+    data: {
+      labels: D.col_labels,
+      datasets: [{
+        label: "Null Rate (%)",
+        data: D.null_data,
+        backgroundColor: D.null_colors,
+        borderRadius: 6,
+      }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      scales: { y: { min: 0, max: 100, grid: { color: "#e2e8f0" } }, x: { grid: { display: false } } },
+      plugins: { legend: { display: false } }
+    }
+  });
+
+  // Completeness
+  new Chart(document.getElementById("completeChart"), {
+    type: "bar",
+    data: {
+      labels: D.col_labels,
+      datasets: [{
+        label: "Completeness (%)",
+        data: D.complete_data,
+        backgroundColor: "#22c55e",
+        borderRadius: 6,
+      }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      scales: { y: { min: 0, max: 100, grid: { color: "#e2e8f0" } }, x: { grid: { display: false } } },
+      plugins: { legend: { display: false } }
+    }
+  });
+
+  // Uniqueness
+  new Chart(document.getElementById("uniqueChart"), {
+    type: "bar",
+    data: {
+      labels: D.col_labels,
+      datasets: [{
+        label: "Uniqueness (%)",
+        data: D.unique_data,
+        backgroundColor: D.unique_colors,
+        borderRadius: 6,
+      }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      scales: { y: { min: 0, max: 100, grid: { color: "#e2e8f0" } }, x: { grid: { display: false } } },
+      plugins: { legend: { display: false } }
+    }
+  });
+</script>
+{% endraw %}
+
+</body>
+</html>

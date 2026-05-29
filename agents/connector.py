@@ -71,8 +71,17 @@ def load_data_to_gcp(project_id: str, bucket_name: str, source_file_path: str, d
 
     gcp_obj = GCPSource(project_id, bucket_name)
     if not os.path.exists(source_file_path):
-        print("Path does not exist locally, prepending ./data/")
-        source_file_path = "./data/" + source_file_path
+        # Strip any directory prefix the LLM may have hallucinated — keep only the filename
+        basename = os.path.basename(source_file_path.replace("\\", "/").strip())
+        # Try ./data/<basename> then ./data/<basename>.csv
+        for candidate in [f"./data/{basename}", f"./data/{basename}.csv"]:
+            if os.path.exists(candidate):
+                source_file_path = candidate
+                break
+        else:
+            # Still not found — use bare basename so the error message is clean
+            source_file_path = f"./data/{basename}"
+        print(f"Path resolved to: {source_file_path}")
 
     if not gcp_obj.bucket_exists():
         return f"""ERROR: Bucket Not Found

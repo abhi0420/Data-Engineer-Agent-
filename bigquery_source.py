@@ -94,8 +94,15 @@ class BigQuerySource:
             return df
         except Exception as e:
             print(f"ERROR : Failed to execute query. Exception: {str(e)}")
-            return pd.DataFrame()   
-        
+            return pd.DataFrame()
+
+    def query_or_raise(self, query: str) -> pd.DataFrame:
+        """Like query(), but raises on failure instead of returning an empty DataFrame.
+        Use this when an empty result vs a failed query must be distinguished."""
+        query_job = self.client.query(query)
+        results = query_job.result()
+        return results.to_dataframe(create_bqstorage_client=False)
+
     def delete_table(self, dataset_id: str, table_id: str) -> str:
         table_ref = self.client.dataset(dataset_id).table(table_id)
         try:
@@ -121,14 +128,14 @@ class BigQuerySource:
 
         job_config = bigquery.LoadJobConfig(
                     schema=schema,
-                    skip_leading_rows=skip_leading_rows if schema is not None else 0,
+                    skip_leading_rows=skip_leading_rows,
                     source_format=bigquery.SourceFormat.CSV,
                     autodetect=(schema is None),
                     )
         
         if file_format.upper() == "CSV":
             job_config.source_format = bigquery.SourceFormat.CSV
-            job_config.skip_leading_rows = skip_leading_rows if schema is not None else 0
+            job_config.skip_leading_rows = skip_leading_rows
             job_config.field_delimiter = field_delimiter
         elif file_format.upper() == "JSON":
             job_config.source_format = bigquery.SourceFormat.NEWLINE_DELIMITED_JSON

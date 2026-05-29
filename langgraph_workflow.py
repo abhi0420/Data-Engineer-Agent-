@@ -8,6 +8,7 @@ import json
 from agents.connector import connector_agent
 from agents.data_transformer import smart_transformer_agent
 from agents.bigquery_assistant import bigquery_agent
+from agents.dq_agent import dq_agent
 import ast
 from sklearn.feature_extraction.text import TfidfVectorizer
 from langchain_community.callbacks import get_openai_callback
@@ -84,6 +85,7 @@ def conflict_resolver(state: State) -> State:
             1. Connector Agent : GCS operations (upload, download, delete files, list files, create buckets)
             2. Smart Transformer Agent : Data transformations using pandas
             3. BigQuery Agent : BigQuery operations (datasets, tables, queries)
+            4. DQ Agent : Data quality checks on BigQuery tables
 
             CONTEXT PROVIDED:
             - User's original request: {state['user_request']}
@@ -181,9 +183,14 @@ def delegator_logic(state: State) -> State:
         3. call_bigquery_agent Tool : 
 
         - Create datasets
-        - Load data from GCS into BigQuery tables (also creates the table automatically with auto-detected schema)
+        - Load data from GCS into BigQuery tables (also creates the table automatically with auto-detected schema — do NOT create the table separately before loading)
         - Insert rows into tables
         - Query data
+
+        4. call_dq_agent Tool :
+
+        - Run data quality checks on BigQuery tables (null rates, uniqueness, validity, completeness, cross-table integrity)
+        - Generate a DQ health report
 
         Conflict_resolver Node : Helps resolve any conflicts that arise during the execution of tasks by other agents. Call this tool when an error occurs. 
 
@@ -306,6 +313,26 @@ def call_bigquery_agent(state : State) -> State:
         state['model_responses'].append("bigquery_agent:" + response_text)
     return state
 
+def call_dq_agent(state: State) -> State:
+    """Calls the DQ agent to run data quality checks on BigQuery tables."""
+    task = state['next_task']
+    print(" \n ------------------------------------------------------ \n")
+    print("Calling DQ Agent to handle the task : ", task)
+    response = dq_agent.invoke(
+        {"messages": [{"role": "user", "content": task}]}
+    )
+    response_text = response['messages'][-1].content
+    print("DQ Agent Response : ", response_text)
+    if "ERROR" in response_text.upper():
+        state['has_error'] = True
+        state['error_details'] = response_text
+    else:
+        state['error_details'] = ""
+        state['retry_count'] = 0
+        state["tasks_done"].append({"dq_agent": state['next_task']})
+        state['model_responses'].append("dq_agent:" + response_text)
+    return state
+
 def execute_workflow(user_request):
     with mlflow.start_run(run_name="execute_workflow") as run:
         mlflow.log_param("user_request", user_request[:250])
@@ -315,13 +342,15 @@ def execute_workflow(user_request):
         workflow.add_node("call_connector_agent", call_connector_agent)
         workflow.add_node("call_smart_transformer_agent", call_smart_transformer_agent)
         workflow.add_node("conflict_resolver", conflict_resolver) 
-        workflow.add_node("call_bigquery_agent", call_bigquery_agent)   
+        workflow.add_node("call_bigquery_agent", call_bigquery_agent)
+        workflow.add_node("call_dq_agent", call_dq_agent)
         workflow.add_edge(START, "delegator_logic")
 
         workflow.add_conditional_edges("delegator_logic", lambda state: state['next_agent'], {
             "connector_agent": "call_connector_agent",
             "smart_transformer_agent": "call_smart_transformer_agent",
             "bigquery_agent": "call_bigquery_agent",
+            "dq_agent": "call_dq_agent",
             "conflict_resolver": "conflict_resolver",
             "END": END
         })
@@ -330,11 +359,13 @@ def execute_workflow(user_request):
             "connector_agent": "call_connector_agent",
             "bigquery_agent": "call_bigquery_agent",
             "smart_transformer_agent": "call_smart_transformer_agent",
+            "dq_agent": "call_dq_agent",
             "END": END
         })
         workflow.add_edge("call_connector_agent", "delegator_logic")
         workflow.add_edge("call_smart_transformer_agent", "delegator_logic")
         workflow.add_edge("call_bigquery_agent", "delegator_logic")
+        workflow.add_edge("call_dq_agent", "delegator_logic")
 
         chain = workflow.compile()
 
@@ -346,7 +377,7 @@ def execute_workflow(user_request):
 
 if __name__ == "__main__":
 
-    user_request = """Read the files wb1.csv & wb2.csv from the bucket  emp-data-init in project data-eng-proj-496117, merge them on the common column. Then save the result in a new file. Upload this new file to a new bucket merged_data_2899 with the same filename. Then create a new table emp_data in BigQuery dataset init_data_4778 and load the data from the merged file into that table. Finally run a query to get me the top 5 rows from that table.
+    user_request = """Load customers.csv and orders.csv from the bucket emp-data-init in project data-eng-proj-496117 to tables Customer and Orders in BigQuery dataset init_data_4778. Finally run a query to get me the top 5 rows from that table.
     """
     with get_openai_callback() as cb:
         try:
