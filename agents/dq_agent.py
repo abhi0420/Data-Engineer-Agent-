@@ -26,6 +26,7 @@ _FORBIDDEN_SQL = {"insert", "update", "delete", "drop", "truncate", "merge",
                   "create", "alter", "call", "execute", "exec"}
 
 
+# Severity check for metrics, what is higher_is_worse?
 def _severity(value: float, warn: float, fail: float, higher_is_worse: bool = True) -> str:
     if higher_is_worse:
         if value >= fail:  return "FAIL"
@@ -35,7 +36,7 @@ def _severity(value: float, warn: float, fail: float, higher_is_worse: bool = Tr
         if value <= warn:  return "WARN"
     return "PASS"
 
-
+# Scans the SQL query for forbidden keywords
 def _safe_sql(sql: str) -> bool:
     """Returns True if SQL only contains SELECT/WITH statements."""
     first_word = sql.strip().split()[0].lower() if sql.strip() else ""
@@ -70,7 +71,7 @@ def discover_schema(project_id: str, dataset_id: str, table_id: str) -> str:
         if schema_df.empty:
             return f"ERROR: Table `{dataset_id}.{table_id}` not found or has no columns."
 
-        # Table size metadata — free query, does not scan table data
+        # Fetch the approximate row count and size from __TABLES__ metadata
         size_sql = f"""
             SELECT row_count, ROUND(size_bytes / POW(1024, 3), 3) AS size_gb
             FROM `{project_id}.{dataset_id}.__TABLES__`
@@ -152,6 +153,8 @@ def run_standard_checks(project_id: str, dataset_id: str, table_id: str) -> str:
                 exprs.append(f"MAX({safe_col}) AS `_max_ts_{col}`")
 
         table_ref = f"`{project_id}.{dataset_id}.{table_id}`"
+
+        # Generate full SQL for standard checks
         sql_full  = f"SELECT {', '.join(exprs)} FROM {table_ref}"
 
         # Dry-run cost check
@@ -279,7 +282,7 @@ Output a JSON array. Each element must have:
 - "name": short check name (e.g. "unique_customer_id")
 - "description": what is being checked
 - "sql": a SELECT query returning a SINGLE numeric value (count of violations or ratio)
-- "pass_condition": e.g. "result == 0" or "result > 0.95"
+- "pass_condition": What is the pass condition for this check, e.g. "result == 0" or "result > 0.95"
 
 Rules:
 - Only SELECT queries. No DML (INSERT, UPDATE, DELETE, DROP, etc.)
@@ -447,15 +450,35 @@ def run_cross_table_checks(project_id: str, dataset_id: str,
         df            = bq_obj.query_or_raise(sql)
         orphaned_rows = int(df.iloc[0, 0]) if not df.empty else 0
 
-        return json.dumps({
-            "check":          "referential_integrity",
-            "table1":         table1,
-            "table2":         table2,
-            "join_key":       join_key,
-            "orphaned_rows":  orphaned_rows,
-            "status":         "PASS" if orphaned_rows == 0 else "FAIL",
-            "estimated_gb":   round(gb_proc, 3),
-        }, default=str)
+        result = {
+            "check":         "referential_integrity",
+            "table1":        table1,
+            "table2":        table2,
+            "join_key":      join_key,
+            "orphaned_rows": orphaned_rows,
+            "status":        "PASS" if orphaned_rows == 0 else "FAIL",
+            "estimated_gb":  round(gb_proc, 3),
+        }
+
+        # Append full result to temp file — generate_dq_report reads and deletes this
+        _CROSS_TEMP = "./data/.cross_temp.json"
+        os.makedirs("./data", exist_ok=True)
+        existing = []
+        if os.path.exists(_CROSS_TEMP):
+            try:
+                with open(_CROSS_TEMP) as f:
+                    existing = json.load(f)
+            except Exception:
+                existing = []
+        existing.append(result)
+        with open(_CROSS_TEMP, "w", encoding="utf-8") as f:
+            json.dump(existing, f)
+
+        # Return one-line summary so agent stays aware without bloating context
+        if orphaned_rows == 0:
+            return f"Cross-table check PASS: {table1} → {table2} on `{join_key}` — no orphaned rows ({round(gb_proc, 3)} GB scanned)"
+        else:
+            return f"Cross-table check FAIL: {table1} → {table2} on `{join_key}` — {orphaned_rows} orphaned rows found ({round(gb_proc, 3)} GB scanned)"
 
     except Exception as e:
         return f"ERROR: Cross-table check failed — {str(e)}"
@@ -489,18 +512,18 @@ def _progress_bar(pct: float, status: str) -> Markup:
 
 @tool
 def generate_dq_report(standard_results: str, dynamic_results: str = "{}",
-                       cross_results: str = "{}",
                        table_name: str = "table") -> str:
     """Aggregates results from all DQ checks into an HTML report with charts and
     saves it to ./data/dq_report_<table>.html using the Jinja2 template at
     config/dq_report_template.html. Call this as the final step after all checks.
+    Cross-table results are read automatically from the internal temp file written
+    by run_cross_table_checks — do not pass them manually.
 
     Required parameters:
         - standard_results:  JSON string from run_standard_checks
 
     Optional parameters:
         - dynamic_results:   JSON string from run_dynamic_checks  (default: empty)
-        - cross_results:     JSON string from run_cross_table_checks (default: empty)
         - table_name:        Table name label for the report title (default: "table")
     """
     import datetime, os
@@ -509,7 +532,17 @@ def generate_dq_report(standard_results: str, dynamic_results: str = "{}",
     try:
         std  = json.loads(standard_results)  if isinstance(standard_results, str) else standard_results
         dyn  = json.loads(dynamic_results)   if isinstance(dynamic_results,  str) else dynamic_results
-        xref = json.loads(cross_results)     if isinstance(cross_results,    str) else cross_results
+
+        # Read cross-table results from temp file written by run_cross_table_checks
+        _CROSS_TEMP = "./data/.cross_temp.json"
+        cross_list = []
+        if os.path.exists(_CROSS_TEMP):
+            try:
+                with open(_CROSS_TEMP) as f:
+                    cross_list = json.load(f)
+                os.remove(_CROSS_TEMP)
+            except Exception:
+                cross_list = []
 
         columns      = std.get("columns", {})
         total_rows   = std.get("total_rows", 0)
@@ -533,7 +566,11 @@ def generate_dq_report(standard_results: str, dynamic_results: str = "{}",
         validity_pct    = round(dyn_pass / dyn_total * 100, 2) if dyn_total > 0 else None
         validity_status = ("PASS" if validity_pct == 100 else ("WARN" if (validity_pct or 0) >= 80 else "FAIL")) if validity_pct is not None else "N/A"
 
-        ri_status = xref.get("status", "N/A")
+        # RI status — FAIL if any cross-table check failed, PASS if all passed, N/A if none ran
+        if cross_list:
+            ri_status = "FAIL" if any(x.get("status") == "FAIL" for x in cross_list) else "PASS"
+        else:
+            ri_status = "N/A"
 
         scores = [completeness_avg]
         if validity_pct is not None:
@@ -602,8 +639,8 @@ def generate_dq_report(standard_results: str, dynamic_results: str = "{}",
             pillars=pillars,
             columns=columns,
             dyn_checks=dyn_checks,
-            xref=xref,
-            show_cross=ri_status not in ("N/A", ""),
+            cross_checks=cross_list,
+            show_cross=len(cross_list) > 0,
             chart_data=chart_data,
             approximate=approximate,
             sample_note=sample_note,
@@ -656,11 +693,12 @@ Follow this workflow, applying judgment at each step:
 5. If you spotted _id or _key columns in step 3, call list_dataset_tables to see what other
    tables exist in the dataset. If a plausible parent table is found (e.g. customer_id → customers
    table, order_id → orders table), call run_cross_table_checks with the relevant join_key.
-   Use your judgment — only check relationships that are clearly indicated by naming; do not
-   run cross-table checks speculatively on every _id column.
+   You may call run_cross_table_checks multiple times for different FK columns — each call
+   automatically records its result. Only check relationships clearly indicated by naming.
 
-6. Call generate_dq_report last, passing standard_results, dynamic_results, cross_results
-   (if any), and table_name formatted as "dataset.table" (e.g. "sales.orders").
+6. Call generate_dq_report last, passing standard_results, dynamic_results, and table_name
+   formatted as "dataset.table" (e.g. "sales.orders"). Cross-table results are automatically
+   collected from any run_cross_table_checks calls — do not pass them manually.
 
 Rules:
 - If project_id, dataset_id, or table_id are missing, respond: "ERROR: Missing parameters — [list]."

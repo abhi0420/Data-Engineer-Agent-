@@ -266,12 +266,13 @@
   {% if show_cross %}
   <section class="card">
     <h2>Cross-Table Integrity</h2>
-    <p style="color:#475569;margin-bottom:1rem;">
+    {% for xref in cross_checks %}
+    <p style="color:#475569;margin-bottom:0.5rem;">
       <strong>{{ xref.table1 }}</strong> &rarr; <strong>{{ xref.table2 }}</strong>
       &nbsp;&middot;&nbsp; Join key: <code>{{ xref.join_key }}</code>
       &nbsp;&middot;&nbsp; Scan: {{ xref.estimated_gb }} GB
     </p>
-    <div style="display:flex;align-items:center;gap:1rem;">
+    <div style="display:flex;align-items:center;gap:1rem;margin-bottom:{% if not loop.last %}1.5rem{% else %}0{% endif %};">
       {{ badge(xref.status) }}
       <span style="color:#475569;">
         {% if xref.orphaned_rows == 0 %}
@@ -282,6 +283,8 @@
         {% endif %}
       </span>
     </div>
+    {% if not loop.last %}<hr style="border:none;border-top:1px solid #e2e8f0;margin:1rem 0;">{% endif %}
+    {% endfor %}
   </section>
   {% endif %}
 
