@@ -16,6 +16,8 @@ from langgraph_workflow import execute_workflow
 from agents.connector import connector_agent
 from agents.data_transformer import smart_transformer_agent
 from agents.bigquery_assistant import bigquery_agent
+from agents.dq_agent import dq_agent
+from agents.delegator import delegator_agent
 
 # ============================================
 # Pydantic Models
@@ -86,6 +88,8 @@ app = FastAPI(
     - **Connector Agent**: GCS operations (upload, download files)
     - **Transformer Agent**: Pandas-based data transformations
     - **BigQuery Agent**: BigQuery operations (datasets, tables, queries)
+    - **DQ Agent**: Autonomous data quality checks and HTML report generation
+    - **Delegator Agent**: Orchestrates connector and transformer agents from a single request
     
     The workflow automatically routes tasks to the appropriate agent and handles errors
     through a conflict resolver.
@@ -264,6 +268,73 @@ async def call_bigquery(request: AgentRequest):
             timestamp=datetime.now().isoformat()
         )
         
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/agents/dq", response_model=AgentResponse, tags=["Agents"])
+async def call_dq_agent(request: AgentRequest):
+    """
+    Call the Data Quality Agent to assess a BigQuery table.
+
+    The DQ Agent autonomously:
+    - Discovers schema and sample data
+    - Runs completeness, uniqueness, and freshness checks
+    - Generates targeted dynamic checks based on column stats
+    - Checks referential integrity against related tables
+    - Produces an HTML report saved to ./data/
+
+    **Example message:**
+    - "Run data quality checks on table Orders in dataset init_data_4778, project data-eng-proj-496117"
+    """
+    try:
+        result = dq_agent.invoke({
+            "messages": [{"role": "user", "content": request.message}]
+        })
+
+        response_text = result["messages"][-1].content
+        status = "error" if "ERROR" in response_text.upper() else "success"
+
+        return AgentResponse(
+            status=status,
+            agent="dq_agent",
+            message=request.message,
+            response=response_text,
+            timestamp=datetime.now().isoformat()
+        )
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/agents/delegator", response_model=AgentResponse, tags=["Agents"])
+async def call_delegator(request: AgentRequest):
+    """
+    Call the Delegator Agent to orchestrate multi-step data engineering tasks.
+
+    The Delegator breaks down complex requests and routes subtasks to the
+    Connector Agent (GCS operations) and Transformer Agent (data transformations).
+
+    **Example messages:**
+    - "Download submissions.csv from bucket data_storage in project my-project,
+       add a Status column (1=Success, 0=Failure), upload result to processed-bucket"
+    """
+    try:
+        result = delegator_agent.invoke({
+            "messages": [{"role": "user", "content": request.message}]
+        })
+
+        response_text = result["messages"][-1].content
+        status = "error" if "ERROR" in response_text.upper() else "success"
+
+        return AgentResponse(
+            status=status,
+            agent="delegator_agent",
+            message=request.message,
+            response=response_text,
+            timestamp=datetime.now().isoformat()
+        )
+
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
