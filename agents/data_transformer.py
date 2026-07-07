@@ -12,7 +12,7 @@ from langchain_community.callbacks import get_openai_callback
 load_dotenv()
 model = get_llm()  # Initialize the model using the config function
 mlflow.langchain.autolog()
-mlflow.set_tracking_uri("http://localhost:5001")
+mlflow.set_tracking_uri(os.getenv("MLFLOW_TRACKING_URI", "http://localhost:5001"))
 mlflow.set_experiment("Data Engineer Agent Workflow")
 
 

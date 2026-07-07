@@ -1,0 +1,21 @@
+services:
+  mlflow:
+    image: ghcr.io/mlflow/mlflow:latest
+    ports:
+      - "5001:5000"
+    volumes:
+      - ./mlflow_data:/mlflow
+    command: mlflow server --host 0.0.0.0 --port 5000 --backend-store-uri /mlflow
+
+  de-agent:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - GOOGLE_APPLICATION_CREDENTIALS=/secrets/sa.json
+    volumes:
+      - ${GCP_SA_KEY_PATH}:/secrets/sa.json:ro
+      - ./data:/de_Agent/data
+    depends_on:
+      - mlflow

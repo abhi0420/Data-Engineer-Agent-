@@ -1,4 +1,5 @@
 import mlflow
+import os
 from config.model_config import get_llm
 
 from typing_extensions import TypedDict, List
@@ -20,7 +21,7 @@ load_dotenv()
 
 mlflow.langchain.autolog()
 
-mlflow.set_tracking_uri("http://localhost:5001")
+mlflow.set_tracking_uri(os.getenv("MLFLOW_TRACKING_URI", "http://localhost:5001"))
 mlflow.set_experiment("Data Engineer Agent Workflow")
 
 
